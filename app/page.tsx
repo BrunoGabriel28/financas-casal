@@ -17,7 +17,9 @@ import {
   Edit2,
   X,
   Target,
-  PiggyBank
+  PiggyBank,
+  RefreshCw,
+  Scale
 } from 'lucide-react';
 import { 
   PieChart, 
@@ -31,7 +33,7 @@ import {
   YAxis 
 } from 'recharts';
 
-// Interfaces TypeScript
+// Interfaces TypeScript Estritas
 interface Transaction {
   id: string;
   description: string;
@@ -68,20 +70,37 @@ interface Goal {
   deadline?: string;
 }
 
+interface Budget {
+  id: string;
+  category: string;
+  type: string;
+  expected_amount: number;
+  month: number;
+  year: number;
+}
+
 interface ChartDataItem {
   name: string;
   value: number;
 }
 
+interface BudgetChartItem {
+  categoria: string;
+  Previsto: number;
+  Realizado: number;
+}
+
 const COLORS = ['#10b981', '#06b6d4', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#3b82f6', '#64748b'];
 
 export default function Home() {
-  const [activeTab, setActiveTab] = useState<'dash' | 'finances' | 'investments' | 'dividends' | 'goals' | 'tools' | 'add'>('dash');
+  const [activeTab, setActiveTab] = useState<'dash' | 'finances' | 'investments' | 'dividends' | 'goals' | 'budgets' | 'tools' | 'add'>('dash');
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [investments, setInvestments] = useState<InvestmentAsset[]>([]);
   const [dividends, setDividends] = useState<Dividend[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
+  const [budgets, setBudgets] = useState<Budget[]>([]);
   const [isMounted, setIsMounted] = useState(false);
+  const [isUpdatingQuotes, setIsUpdatingQuotes] = useState(false);
 
   // Estados dos Filtros
   const currentDate = new Date();
@@ -91,11 +110,11 @@ export default function Home() {
   const [startDate, setStartDate] = useState<string>(`${currentDate.getFullYear()}-01-01`);
   const [endDate, setEndDate] = useState<string>(currentDate.toISOString().split('T')[0]);
 
-  // Formulário Unificado
-  const [entryType, setEntryType] = useState<'transaction' | 'investment' | 'dividend' | 'goal'>('transaction');
+  // Formulário Unificado (Inserção e Edição)
+  const [entryType, setEntryType] = useState<'transaction' | 'investment' | 'dividend' | 'goal' | 'budget'>('transaction');
   const [editingId, setEditingId] = useState<string | null>(null);
   
-  // Transações
+  // Transações Form
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
   const [transType, setTransType] = useState<'income' | 'expense'>('expense');
@@ -116,7 +135,11 @@ export default function Home() {
   const [goalCurrent, setGoalCurrent] = useState('');
   const [goalDeadline, setGoalDeadline] = useState('');
 
-  // Calculadora Proporcional
+  // Orçamento Form
+  const [budgetCategory, setBudgetCategory] = useState('Mercado');
+  const [budgetAmount, setBudgetAmount] = useState('');
+
+  // Calculadora Proporcional Form
   const [incomeHe, setIncomeHe] = useState('');
   const [incomeShe, setIncomeShe] = useState('');
   const [totalBills, setTotalBills] = useState('');
@@ -125,7 +148,7 @@ export default function Home() {
     setIsMounted(true);
   }, []);
 
-  // Buscar dados
+  // Buscar dados com base nos filtros
   async function loadData() {
     let transQuery = supabase.from('transactions').select('*').order('date', { ascending: false });
 
@@ -152,13 +175,54 @@ export default function Home() {
 
     const { data: goalsData } = await supabase.from('goals').select('*');
     if (goalsData) setGoals(goalsData as Goal[]);
+
+    const { data: budgetsData } = await supabase.from('budgets').select('*')
+      .eq('month', selectedMonth)
+      .eq('year', selectedYear);
+    if (budgetsData) setBudgets(budgetsData as Budget[]);
   }
 
   useEffect(() => {
     loadData();
   }, [selectedMonth, selectedYear, filterType, startDate, endDate]);
 
-  // Salvar / Atualizar Lançamento
+  // Atualizador de Cotações em Tempo Real (Brapi API)
+  async function updateStockQuotes() {
+    if (investments.length === 0) {
+      alert('Nenhum ativo cadastrado para atualizar cotações.');
+      return;
+    }
+
+    setIsUpdatingQuotes(true);
+    try {
+      const tickers = Array.from(new Set(investments.map(inv => inv.ticker.trim().toUpperCase()))).join(',');
+      const response = await fetch(`https://brapi.dev/api/quote/${tickers}?fundamental=false`);
+      const data = await response.json();
+
+      if (data && data.results) {
+        for (const stock of data.results) {
+          const fetchedPrice = stock.regularMarketPrice;
+          if (fetchedPrice && fetchedPrice > 0) {
+            await supabase
+              .from('investment_assets')
+              .update({ current_price: fetchedPrice })
+              .eq('ticker', stock.symbol);
+          }
+        }
+        await loadData();
+        alert('Cotações atualizadas em tempo real com sucesso!');
+      } else {
+        alert('Não foi possível obter as cotações no momento.');
+      }
+    } catch (err) {
+      console.error('Erro ao buscar cotações:', err);
+      alert('Erro ao consultar API de cotações.');
+    } finally {
+      setIsUpdatingQuotes(false);
+    }
+  }
+
+  // Salvar / Atualizar Lançamento Unificado
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
@@ -230,6 +294,25 @@ export default function Home() {
           const { error } = await supabase.from('goals').insert([payload]);
           if (error) throw error;
         }
+
+      } else if (entryType === 'budget') {
+        const payload = {
+          category: budgetCategory,
+          type: 'expense',
+          expected_amount: parseFloat(budgetAmount),
+          month: selectedMonth,
+          year: selectedYear
+        };
+
+        // Verificar se já existe orçamento para a categoria no mês
+        const existing = budgets.find(b => b.category === budgetCategory);
+        if (existing) {
+          const { error } = await supabase.from('budgets').update({ expected_amount: parseFloat(budgetAmount) }).eq('id', existing.id);
+          if (error) throw error;
+        } else {
+          const { error } = await supabase.from('budgets').insert([payload]);
+          if (error) throw error;
+        }
       }
 
       resetForm();
@@ -244,7 +327,7 @@ export default function Home() {
     }
   }
 
-  // Preparar edição
+  // Edições
   function handleEditTransaction(t: Transaction) {
     setEntryType('transaction');
     setEditingId(t.id);
@@ -288,7 +371,7 @@ export default function Home() {
     setActiveTab('add');
   }
 
-  // Funções de Exclusão
+  // Exclusões
   async function handleDeleteTransaction(id: string) {
     if (!confirm('Tem certeza que deseja apagar este lançamento?')) return;
     const { error } = await supabase.from('transactions').delete().eq('id', id);
@@ -317,6 +400,13 @@ export default function Home() {
     else loadData();
   }
 
+  async function handleDeleteBudget(id: string) {
+    if (!confirm('Tem certeza que deseja remover este limite orçamentário?')) return;
+    const { error } = await supabase.from('budgets').delete().eq('id', id);
+    if (error) alert('Erro ao excluir.');
+    else loadData();
+  }
+
   function resetForm() {
     setEditingId(null);
     setDescription('');
@@ -329,6 +419,7 @@ export default function Home() {
     setGoalTarget('');
     setGoalCurrent('');
     setGoalDeadline('');
+    setBudgetAmount('');
     setEntryDate(new Date().toISOString().split('T')[0]);
   }
 
@@ -337,9 +428,14 @@ export default function Home() {
   const totalExpense = transactions.filter(t => t.type === 'expense').reduce((acc, t) => acc + Number(t.amount), 0);
   const monthlyBalance = totalIncome - totalExpense;
 
+  // Cálculos de Investimentos
   const totalInvested = investments.reduce((acc, inv) => acc + (Number(inv.quantity) * Number(inv.average_price)), 0);
+  const totalCurrentInvested = investments.reduce((acc, inv) => {
+    const price = (inv.current_price && inv.current_price > 0) ? inv.current_price : inv.average_price;
+    return acc + (Number(inv.quantity) * Number(price));
+  }, 0);
   const totalDividends = dividends.reduce((acc, d) => acc + Number(d.amount), 0);
-  const netWorth = monthlyBalance + totalInvested;
+  const netWorth = monthlyBalance + totalCurrentInvested;
 
   // Gráfico 1: Gastos por Categoria
   const categoryChartData = transactions
@@ -359,14 +455,28 @@ export default function Home() {
 
   // Gráfico 3: Alocação por Classe de Ativos
   const assetClassChartData = investments.reduce((acc: ChartDataItem[], inv) => {
-    const totalValue = Number(inv.quantity) * Number(inv.average_price);
+    const price = (inv.current_price && inv.current_price > 0) ? inv.current_price : inv.average_price;
+    const totalValue = Number(inv.quantity) * Number(price);
     const existing = acc.find(item => item.name === inv.asset_class);
     if (existing) existing.value += totalValue;
     else acc.push({ name: inv.asset_class, value: totalValue });
     return acc;
   }, []);
 
-  // Calculadora
+  // Gráfico 4: Orçamento Previsto vs Realizado
+  const budgetChartData: BudgetChartItem[] = budgets.map(b => {
+    const totalRealized = transactions
+      .filter(t => t.category === b.category && t.type === 'expense')
+      .reduce((acc, t) => acc + Number(t.amount), 0);
+
+    return {
+      categoria: b.category,
+      Previsto: Number(b.expected_amount),
+      Realizado: totalRealized
+    };
+  });
+
+  // Calculadora Proporcional
   const valHe = parseFloat(incomeHe) || 0;
   const valShe = parseFloat(incomeShe) || 0;
   const valBills = parseFloat(totalBills) || 0;
@@ -399,17 +509,27 @@ export default function Home() {
           </h1>
           <p className="text-[10px] text-slate-400 uppercase tracking-widest font-semibold">Gestão & Patrimônio Consolidado</p>
         </div>
-        <div className="flex items-center gap-1.5">
-          <span className="w-7 h-7 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-xs border border-emerald-500/30">E</span>
-          <span className="w-7 h-7 rounded-full bg-teal-500/20 text-teal-400 flex items-center justify-center font-bold text-xs border border-teal-500/30">D</span>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={updateStockQuotes}
+            disabled={isUpdatingQuotes}
+            className="p-1.5 bg-slate-800 hover:bg-slate-700 text-cyan-400 rounded-lg border border-slate-700 transition flex items-center gap-1"
+            title="Atualizar Cotações B3"
+          >
+            <RefreshCw size={14} className={isUpdatingQuotes ? 'animate-spin' : ''} />
+          </button>
+          <div className="flex items-center gap-1">
+            <span className="w-7 h-7 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-xs border border-emerald-500/30">E</span>
+            <span className="w-7 h-7 rounded-full bg-teal-500/20 text-teal-400 flex items-center justify-center font-bold text-xs border border-teal-500/30">D</span>
+          </div>
         </div>
       </header>
 
       {/* Conteúdo Principal */}
       <main className="w-full max-w-md p-4 space-y-5">
 
-        {/* --- BARRA DE FILTROS DE DATA --- */}
-        {(activeTab === 'dash' || activeTab === 'finances') && (
+        {/* BARRA DE FILTROS DE DATA */}
+        {(activeTab === 'dash' || activeTab === 'finances' || activeTab === 'budgets') && (
           <div className="bg-slate-900 border border-slate-800 p-3 rounded-2xl space-y-2.5">
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-bold text-slate-400 uppercase flex items-center gap-1.5">
@@ -506,9 +626,9 @@ export default function Home() {
                   </span>
                 </div>
                 <div>
-                  <span className="text-slate-400 block text-[10px]">Total Investido</span>
+                  <span className="text-slate-400 block text-[10px]">Total Investido (Atual)</span>
                   <span className="font-bold text-cyan-400">
-                    R$ {totalInvested.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    R$ {totalCurrentInvested.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                   </span>
                 </div>
               </div>
@@ -643,6 +763,81 @@ export default function Home() {
           </>
         )}
 
+        {/* --- ABA ORÇAMENTO PREVISTO VS REALIZADO --- */}
+        {activeTab === 'budgets' && (
+          <div className="space-y-4">
+            <div className="flex justify-between items-center">
+              <h2 className="text-base font-bold text-slate-200 flex items-center gap-2">
+                <Scale size={18} className="text-emerald-400" /> Orçamento Mensal
+              </h2>
+              <button 
+                onClick={() => { setEntryType('budget'); setActiveTab('add'); }} 
+                className="text-xs text-emerald-400 font-bold border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 rounded-lg"
+              >
+                + Definir Teto
+              </button>
+            </div>
+
+            {/* GRÁFICO 4: COMPARATIVO PREVISTO VS REALIZADO */}
+            {isMounted && budgetChartData.length > 0 && (
+              <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl space-y-3">
+                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Previsto vs Realizado</h3>
+                <div className="h-52 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={budgetChartData}>
+                      <XAxis dataKey="categoria" stroke="#94a3b8" fontSize={9} tickLine={false} />
+                      <YAxis stroke="#94a3b8" fontSize={9} tickLine={false} axisLine={false} />
+                      <Tooltip contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px', fontSize: '11px' }} />
+                      <Bar dataKey="Previsto" fill="#06b6d4" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="Realizado" fill="#f43f5e" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            )}
+
+            {/* LISTA DE LIMITES POR CATEGORIA */}
+            <div className="space-y-2">
+              {budgets.length === 0 ? (
+                <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl text-center space-y-2">
+                  <Scale size={32} className="mx-auto text-slate-600" />
+                  <p className="text-xs text-slate-400">Nenhum orçamento configurado para este mês.</p>
+                </div>
+              ) : (
+                budgets.map((b) => {
+                  const spent = transactions
+                    .filter(t => t.category === b.category && t.type === 'expense')
+                    .reduce((acc, t) => acc + Number(t.amount), 0);
+                  
+                  const expected = Number(b.expected_amount) || 1;
+                  const pct = Math.min(Math.round((spent / expected) * 100), 100);
+                  const isOverBudget = spent > expected;
+
+                  return (
+                    <div key={b.id} className="bg-slate-900 border border-slate-800 p-3.5 rounded-xl space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs font-bold text-slate-200">{b.category}</span>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-xs font-bold ${isOverBudget ? 'text-rose-400' : 'text-slate-300'}`}>
+                            R$ {spent.toFixed(2)} / R$ {expected.toFixed(2)}
+                          </span>
+                          <button onClick={() => handleDeleteBudget(b.id)} className="p-1 text-slate-500 hover:text-rose-400"><Trash2 size={13} /></button>
+                        </div>
+                      </div>
+                      <div className="w-full bg-slate-950 h-2 rounded-full overflow-hidden border border-slate-800">
+                        <div 
+                          className={`h-full rounded-full transition-all duration-500 ${isOverBudget ? 'bg-rose-500' : 'bg-emerald-500'}`} 
+                          style={{ width: `${pct}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        )}
+
         {/* --- ABA METAS DO CASAL --- */}
         {activeTab === 'goals' && (
           <div className="space-y-4">
@@ -701,7 +896,7 @@ export default function Home() {
         {/* --- ABA 2: FINANÇAS --- */}
         {activeTab === 'finances' && (
           <div className="space-y-4">
-            <h2 className="text-base font-bold text-slate-200">Categorias & Orçamento</h2>
+            <h2 className="text-base font-bold text-slate-200">Categorias & Resumo</h2>
             <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl text-xs space-y-3">
               <div className="grid grid-cols-2 gap-2">
                 {categoriesList.map((cat, idx) => {
@@ -728,7 +923,16 @@ export default function Home() {
           <div className="space-y-4">
             <div className="flex justify-between items-center">
               <h2 className="text-base font-bold text-slate-200">Carteira de Ativos</h2>
-              <span className="text-xs text-emerald-400 font-bold">Total: R$ {totalInvested.toFixed(2)}</span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={updateStockQuotes}
+                  disabled={isUpdatingQuotes}
+                  className="text-[10px] font-bold text-cyan-400 border border-cyan-500/30 bg-cyan-500/10 px-2 py-1 rounded-lg flex items-center gap-1"
+                >
+                  <RefreshCw size={11} className={isUpdatingQuotes ? 'animate-spin' : ''} />
+                  {isUpdatingQuotes ? 'Buscando...' : 'Cotações B3'}
+                </button>
+              </div>
             </div>
 
             {/* GRÁFICO 3: ALOCAÇÃO POR CLASSE DE ATIVO */}
@@ -782,8 +986,13 @@ export default function Home() {
               </div>
             ) : (
               investments.map((inv) => {
-                const totalAsset = Number(inv.quantity) * Number(inv.average_price);
-                const isBelowCeiling = (inv.ceiling_price ?? 0) > 0 && (inv.current_price ?? 0) <= (inv.ceiling_price ?? 0);
+                const totalCost = Number(inv.quantity) * Number(inv.average_price);
+                const currentPrice = (inv.current_price && inv.current_price > 0) ? inv.current_price : inv.average_price;
+                const totalCurrent = Number(inv.quantity) * Number(currentPrice);
+                const profitLoss = totalCurrent - totalCost;
+                const profitLossPct = totalCost > 0 ? (profitLoss / totalCost) * 100 : 0;
+
+                const isBelowCeiling = (inv.ceiling_price ?? 0) > 0 && currentPrice <= (inv.ceiling_price ?? 0);
 
                 return (
                   <div key={inv.id} className="bg-slate-900 border border-slate-800 p-4 rounded-xl space-y-2">
@@ -795,22 +1004,30 @@ export default function Home() {
                         <span className="text-[10px] text-slate-400 ml-2">{inv.asset_class}</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <p className="text-xs font-bold text-slate-100">R$ {totalAsset.toFixed(2)}</p>
+                        <div className="text-right">
+                          <p className="text-xs font-bold text-slate-100">R$ {totalCurrent.toFixed(2)}</p>
+                          <p className={`text-[9px] font-bold ${profitLoss >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                            {profitLoss >= 0 ? '+' : ''}{profitLoss.toFixed(2)} ({profitLossPct.toFixed(1)}%)
+                          </p>
+                        </div>
                         <button onClick={() => handleEditInvestment(inv)} className="p-1 text-slate-500 hover:text-amber-400" title="Editar"><Edit2 size={13} /></button>
                         <button onClick={() => handleDeleteInvestment(inv.id)} className="p-1 text-slate-500 hover:text-rose-400" title="Excluir"><Trash2 size={13} /></button>
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-2 text-[10px] text-slate-400 pt-2 border-t border-slate-800/60">
+                    <div className="grid grid-cols-4 gap-1 text-[10px] text-slate-400 pt-2 border-t border-slate-800/60">
                       <div>
                         <span>Qtd:</span> <strong className="text-slate-200 block">{inv.quantity}</strong>
                       </div>
                       <div>
-                        <span>Preço Médio:</span> <strong className="text-slate-200 block">R$ {Number(inv.average_price).toFixed(2)}</strong>
+                        <span>PM:</span> <strong className="text-slate-200 block">R$ {Number(inv.average_price).toFixed(2)}</strong>
                       </div>
                       <div>
-                        <span>Preço Teto:</span> 
-                        <strong className={`block ${isBelowCeiling ? 'text-emerald-400' : 'text-slate-200'}`}>
+                        <span>Atual:</span> <strong className="text-cyan-400 block">R$ {Number(currentPrice).toFixed(2)}</strong>
+                      </div>
+                      <div>
+                        <span>Teto:</span> 
+                        <strong className={`block ${isBelowCeiling ? 'text-emerald-400 font-bold' : 'text-slate-200'}`}>
                           {(inv.ceiling_price ?? 0) > 0 ? `R$ ${Number(inv.ceiling_price).toFixed(2)}` : 'N/A'}
                         </strong>
                       </div>
@@ -924,7 +1141,7 @@ export default function Home() {
             </div>
 
             {!editingId && (
-              <div className="grid grid-cols-4 gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-[9px]">
+              <div className="grid grid-cols-5 gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-[8px]">
                 <button
                   type="button"
                   onClick={() => setEntryType('transaction')}
@@ -937,7 +1154,7 @@ export default function Home() {
                   onClick={() => setEntryType('investment')}
                   className={`py-2 rounded-lg font-bold ${entryType === 'investment' ? 'bg-emerald-500 text-slate-950' : 'text-slate-400'}`}
                 >
-                  Investimento
+                  Ativo
                 </button>
                 <button
                   type="button"
@@ -952,6 +1169,13 @@ export default function Home() {
                   className={`py-2 rounded-lg font-bold ${entryType === 'goal' ? 'bg-emerald-500 text-slate-950' : 'text-slate-400'}`}
                 >
                   Meta
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEntryType('budget')}
+                  className={`py-2 rounded-lg font-bold ${entryType === 'budget' ? 'bg-emerald-500 text-slate-950' : 'text-slate-400'}`}
+                >
+                  Teto
                 </button>
               </div>
             )}
@@ -1063,7 +1287,7 @@ export default function Home() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-3 gap-2">
                   <div>
                     <label className="text-[10px] text-slate-400 block mb-1">Quantidade</label>
                     <input
@@ -1077,7 +1301,7 @@ export default function Home() {
                     />
                   </div>
                   <div>
-                    <label className="text-[10px] text-slate-400 block mb-1">Preço Médio (R$)</label>
+                    <label className="text-[10px] text-slate-400 block mb-1">Preço Médio</label>
                     <input
                       type="number"
                       step="0.01"
@@ -1086,6 +1310,17 @@ export default function Home() {
                       placeholder="160.00"
                       className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-100"
                       required
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-slate-400 block mb-1">Preço Teto</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={ceilingPrice}
+                      onChange={(e) => setCeilingPrice(e.target.value)}
+                      placeholder="175.00"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-100"
                     />
                   </div>
                 </div>
@@ -1182,6 +1417,35 @@ export default function Home() {
               </>
             )}
 
+            {entryType === 'budget' && (
+              <>
+                <div>
+                  <label className="text-[10px] text-slate-400 block mb-1">Categoria</label>
+                  <select
+                    value={budgetCategory}
+                    onChange={(e) => setBudgetCategory(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-100"
+                  >
+                    {categoriesList.map((cat, idx) => (
+                      <option key={idx} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] text-slate-400 block mb-1">Limite do Teto Mês ({selectedMonth}/{selectedYear})</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={budgetAmount}
+                    onChange={(e) => setBudgetAmount(e.target.value)}
+                    placeholder="Ex: 1500.00"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-100"
+                    required
+                  />
+                </div>
+              </>
+            )}
+
             <button
               type="submit"
               className="w-full bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold p-3.5 rounded-xl transition duration-200 mt-2"
@@ -1203,11 +1467,11 @@ export default function Home() {
         </button>
 
         <button
-          onClick={() => { resetForm(); setActiveTab('goals'); }}
-          className={`flex flex-col items-center gap-1 ${activeTab === 'goals' ? 'text-emerald-400' : 'text-slate-500'}`}
+          onClick={() => { resetForm(); setActiveTab('budgets'); }}
+          className={`flex flex-col items-center gap-1 ${activeTab === 'budgets' ? 'text-emerald-400' : 'text-slate-500'}`}
         >
-          <Target size={18} />
-          <span className="text-[9px] font-medium">Metas</span>
+          <Scale size={18} />
+          <span className="text-[9px] font-medium">Orçamento</span>
         </button>
 
         <button
@@ -1218,19 +1482,19 @@ export default function Home() {
         </button>
 
         <button
+          onClick={() => { resetForm(); setActiveTab('goals'); }}
+          className={`flex flex-col items-center gap-1 ${activeTab === 'goals' ? 'text-emerald-400' : 'text-slate-500'}`}
+        >
+          <Target size={18} />
+          <span className="text-[9px] font-medium">Metas</span>
+        </button>
+
+        <button
           onClick={() => { resetForm(); setActiveTab('investments'); }}
           className={`flex flex-col items-center gap-1 ${activeTab === 'investments' ? 'text-emerald-400' : 'text-slate-500'}`}
         >
           <TrendingUp size={18} />
           <span className="text-[9px] font-medium">Carteira</span>
-        </button>
-
-        <button
-          onClick={() => { resetForm(); setActiveTab('tools'); }}
-          className={`flex flex-col items-center gap-1 ${activeTab === 'tools' ? 'text-emerald-400' : 'text-slate-500'}`}
-        >
-          <Calculator size={18} />
-          <span className="text-[9px] font-medium">Ferramentas</span>
         </button>
       </nav>
     </div>
