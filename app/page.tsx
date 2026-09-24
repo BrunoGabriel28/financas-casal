@@ -483,7 +483,7 @@ export default function Home() {
                     <label className="text-[10px] text-slate-400 block mb-1">Tipo</label>
                     <select
                       value={transType}
-                      onChange={(e: any) => setTransType(e.target.value)}
+                      onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setTransType(e.target.value as 'income' | 'expense')}
                       className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-100"
                     >
                       <option value="expense">Despesa</option>
