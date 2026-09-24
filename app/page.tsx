@@ -48,13 +48,13 @@ export default function Home() {
 
   // Buscar dados
   async function loadData() {
-    const { data: transData } = await supabase.from('transactions').select('*').order('date', { ascending: false });
+    const { data: transData, error: transError } = await supabase.from('transactions').select('*').order('date', { ascending: false });
     if (transData) setTransactions(transData);
 
-    const { data: invData } = await supabase.from('investment_assets').select('*');
+    const { data: invData, error: invError } = await supabase.from('investment_assets').select('*');
     if (invData) setInvestments(invData);
 
-    const { data: divData } = await supabase.from('dividends').select('*');
+    const { data: divData, error: divError } = await supabase.from('dividends').select('*');
     if (divData) setDividends(divData);
   }
 
@@ -62,44 +62,60 @@ export default function Home() {
     loadData();
   }, []);
 
-  // Adicionar Lançamento Unificado
+  // Adicionar Lançamento Unificado (Corrigido com validação e tratamento de erro)
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
-    if (entryType === 'transaction') {
-      await supabase.from('transactions').insert([{
-        description,
-        amount: parseFloat(amount),
-        type: transType,
-        paid_by: paidBy
-      }]);
-    } else if (entryType === 'investment') {
-      await supabase.from('investment_assets').insert([{
-        ticker: ticker.toUpperCase(),
-        asset_class: assetClass,
-        quantity: parseFloat(quantity),
-        average_price: parseFloat(avgPrice),
-        current_price: parseFloat(avgPrice),
-        ceiling_price: ceilingPrice ? parseFloat(ceilingPrice) : 0,
-        owner: paidBy
-      }]);
-    } else if (entryType === 'dividend') {
-      await supabase.from('dividends').insert([{
-        ticker: ticker.toUpperCase(),
-        amount: parseFloat(amount),
-        payment_date: new Date().toISOString().split('T')[0]
-      }]);
-    }
+    try {
+      if (entryType === 'transaction') {
+        const { error } = await supabase.from('transactions').insert([{
+          description,
+          amount: parseFloat(amount),
+          type: transType,
+          category,
+          paid_by: paidBy,
+          date: new Date().toISOString()
+        }]);
+        if (error) throw error;
 
-    // Reset formulários
-    setDescription('');
-    setAmount('');
-    setTicker('');
-    setQuantity('');
-    setAvgPrice('');
-    setCeilingPrice('');
-    loadData();
-    setActiveTab('dash');
+      } else if (entryType === 'investment') {
+        const { error } = await supabase.from('investment_assets').insert([{
+          ticker: ticker.toUpperCase(),
+          asset_class: assetClass,
+          quantity: parseFloat(quantity),
+          average_price: parseFloat(avgPrice),
+          current_price: parseFloat(avgPrice),
+          ceiling_price: ceilingPrice ? parseFloat(ceilingPrice) : 0,
+          owner: paidBy
+        }]);
+        if (error) throw error;
+
+      } else if (entryType === 'dividend') {
+        const { error } = await supabase.from('dividends').insert([{
+          ticker: ticker.toUpperCase(),
+          amount: parseFloat(amount),
+          payment_date: new Date().toISOString().split('T')[0]
+        }]);
+        if (error) throw error;
+      }
+
+      // Limpeza dos estados
+      setDescription('');
+      setAmount('');
+      setTicker('');
+      setQuantity('');
+      setAvgPrice('');
+      setCeilingPrice('');
+
+      // Recarrega os dados e redireciona
+      await loadData();
+      setActiveTab('dash');
+      alert('Lançamento salvo com sucesso!');
+
+    } catch (err: any) {
+      console.error('Erro ao salvar lançamento:', err);
+      alert(`Erro ao salvar no banco de dados: ${err.message || 'Verifique as permissões ou conexões.'}`);
+    }
   }
 
   // Cálculos Financeiros
@@ -436,17 +452,31 @@ export default function Home() {
                     required
                   />
                 </div>
-                <div>
-                  <label className="text-[10px] text-slate-400 block mb-1">Valor (R$)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                    placeholder="0,00"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-100"
-                    required
-                  />
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[10px] text-slate-400 block mb-1">Valor (R$)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={amount}
+                      onChange={(e) => setAmount(e.target.value)}
+                      placeholder="0,00"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-100"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-slate-400 block mb-1">Categoria</label>
+                    <select
+                      value={category}
+                      onChange={(e) => setCategory(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-100"
+                    >
+                      {categoriesList.map((cat, idx) => (
+                        <option key={idx} value={cat}>{cat}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
