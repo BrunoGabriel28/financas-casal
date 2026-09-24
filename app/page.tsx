@@ -10,16 +10,31 @@ import {
   ArrowUpRight, 
   ArrowDownRight, 
   Coins,
-  Calendar,
   Filter,
-  RefreshCw
+  PieChart as PieIcon,
+  BarChart3
 } from 'lucide-react';
+import { 
+  PieChart, 
+  Pie, 
+  Cell, 
+  ResponsiveContainer, 
+  Tooltip, 
+  BarChart, 
+  Bar, 
+  XAxis, 
+  YAxis 
+} from 'recharts';
+
+// Paleta de cores para os gráficos
+const COLORS = ['#10b981', '#06b6d4', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#3b82f6', '#64748b'];
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<'dash' | 'finances' | 'investments' | 'dividends' | 'tools' | 'add'>('dash');
   const [transactions, setTransactions] = useState<any[]>([]);
   const [investments, setInvestments] = useState<any[]>([]);
   const [dividends, setDividends] = useState<any[]>([]);
+  const [isMounted, setIsMounted] = useState(false);
 
   // Estados dos Filtros
   const currentDate = new Date();
@@ -50,11 +65,14 @@ export default function Home() {
   const [incomeShe, setIncomeShe] = useState('');
   const [totalBills, setTotalBills] = useState('');
 
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
   // Buscar dados com base nos filtros
   async function loadData() {
     let transQuery = supabase.from('transactions').select('*').order('date', { ascending: false });
 
-    // Aplicar filtros de data nas transações
     if (filterType === 'month_year') {
       const startOfMonth = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-01T00:00:00.000Z`;
       const lastDay = new Date(selectedYear, selectedMonth, 0).getDate();
@@ -81,7 +99,7 @@ export default function Home() {
     loadData();
   }, [selectedMonth, selectedYear, filterType, startDate, endDate]);
 
-  // Adicionar Lançamento Unificado
+  // Adicionar Lançamento
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
@@ -118,7 +136,6 @@ export default function Home() {
         if (error) throw error;
       }
 
-      // Limpeza dos campos
       setDescription('');
       setAmount('');
       setTicker('');
@@ -145,6 +162,37 @@ export default function Home() {
   const totalInvested = investments.reduce((acc, inv) => acc + (Number(inv.quantity) * Number(inv.average_price)), 0);
   const totalDividends = dividends.reduce((acc, d) => acc + Number(d.amount), 0);
   const netWorth = monthlyBalance + totalInvested;
+
+  // Dados para o Gráfico de Categorias (Despesas)
+  const categoryChartData = transactions
+    .filter(t => t.type === 'expense')
+    .reduce((acc: any[], t) => {
+      const existing = acc.find(item => item.name === t.category);
+      if (existing) {
+        existing.value += Number(t.amount);
+      } else {
+        acc.push({ name: t.category, value: Number(t.amount) });
+      }
+      return acc;
+    }, []);
+
+  // Dados para o Gráfico Comparativo Receitas vs Despesas
+  const comparisonChartData = [
+    { name: 'Receitas', valor: totalIncome },
+    { name: 'Despesas', valor: totalExpense },
+  ];
+
+  // Dados para o Gráfico de Alocação por Classe de Ativo
+  const assetClassChartData = investments.reduce((acc: any[], inv) => {
+    const totalValue = Number(inv.quantity) * Number(inv.average_price);
+    const existing = acc.find(item => item.name === inv.asset_class);
+    if (existing) {
+      existing.value += totalValue;
+    } else {
+      acc.push({ name: inv.asset_class, value: totalValue });
+    }
+    return acc;
+  }, []);
 
   // Calculadora
   const valHe = parseFloat(incomeHe) || 0;
@@ -179,7 +227,6 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center pb-24">
-      {/* Topbar Fixo */}
       <header className="w-full max-w-md bg-slate-900/90 backdrop-blur-md border-b border-slate-800 p-4 sticky top-0 z-10 flex justify-between items-center">
         <div>
           <h1 className="text-xl font-black bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-400 bg-clip-text text-transparent">
@@ -193,10 +240,9 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Conteúdo Principal */}
       <main className="w-full max-w-md p-4 space-y-5">
 
-        {/* --- BARRA DE FILTROS DE DATA --- */}
+        {/* BARRA DE FILTROS */}
         {(activeTab === 'dash' || activeTab === 'finances') && (
           <div className="bg-slate-900 border border-slate-800 p-3 rounded-2xl space-y-2.5">
             <div className="flex items-center justify-between">
@@ -228,7 +274,6 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Filtro Mês/Ano */}
             {filterType === 'month_year' && (
               <div className="grid grid-cols-2 gap-2 pt-1">
                 <select
@@ -253,7 +298,6 @@ export default function Home() {
               </div>
             )}
 
-            {/* Filtro por Intervalo de Datas */}
             {filterType === 'range' && (
               <div className="grid grid-cols-2 gap-2 pt-1">
                 <div>
@@ -282,7 +326,7 @@ export default function Home() {
         {/* --- ABA 1: DASHBOARD --- */}
         {activeTab === 'dash' && (
           <>
-            {/* Card Patrimônio Líquido */}
+            {/* Card Patrimônio */}
             <div className="bg-gradient-to-br from-slate-900 via-slate-900 to-emerald-950/30 border border-slate-800 p-5 rounded-2xl shadow-xl relative overflow-hidden">
               <span className="text-[11px] text-slate-400 uppercase tracking-wider font-bold">Patrimônio Líquido do Casal</span>
               <p className="text-3xl font-black text-slate-100 mt-1">
@@ -304,7 +348,7 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Resumo do Período */}
+            {/* Resumo Financeiro */}
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-xl">
                 <p className="text-xs text-emerald-400 flex items-center gap-1 font-semibold">
@@ -325,7 +369,74 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Extrato do Período Filtrado */}
+            {/* GRÁFICO 1: COMPARATIVO RECEITAS VS DESPESAS */}
+            {isMounted && (totalIncome > 0 || totalExpense > 0) && (
+              <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl space-y-3">
+                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                  <BarChart3 size={14} className="text-emerald-400" /> Receitas vs Despesas
+                </h3>
+                <div className="h-44 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={comparisonChartData}>
+                      <XAxis dataKey="name" stroke="#94a3b8" fontSize={11} tickLine={false} />
+                      <YAxis stroke="#94a3b8" fontSize={10} tickLine={false} axisLine={false} />
+                      <Tooltip 
+                        contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px', fontSize: '12px' }} 
+                        formatter={(value: any) => [`R$ ${Number(value).toFixed(2)}`, 'Valor']}
+                      />
+                      <Bar dataKey="valor" radius={[6, 6, 0, 0]}>
+                        <Cell fill="#10b981" />
+                        <Cell fill="#f43f5e" />
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            )}
+
+            {/* GRÁFICO 2: DESPESAS POR CATEGORIA */}
+            {isMounted && categoryChartData.length > 0 && (
+              <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl space-y-3">
+                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                  <PieIcon size={14} className="text-emerald-400" /> Gastos por Categoria
+                </h3>
+                <div className="h-48 w-full flex items-center justify-center">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={categoryChartData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={45}
+                        outerRadius={70}
+                        paddingAngle={4}
+                        dataKey="value"
+                      >
+                        {categoryChartData.map((entry: any, index: number) => (
+                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip 
+                        contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px', fontSize: '12px' }}
+                        formatter={(value: any) => [`R$ ${Number(value).toFixed(2)}`, 'Gasto']}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                {/* Legendas das Categorias */}
+                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800 text-[10px]">
+                  {categoryChartData.map((cat: any, index: number) => (
+                    <div key={index} className="flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: COLORS[index % COLORS.length] }}></span>
+                      <span className="text-slate-400 truncate">{cat.name}:</span>
+                      <strong className="text-slate-200">R$ {cat.value.toFixed(0)}</strong>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Extrato do Período */}
             <div className="space-y-3">
               <div className="flex justify-between items-center">
                 <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Lançamentos do Período</h3>
@@ -391,6 +502,47 @@ export default function Home() {
               <h2 className="text-base font-bold text-slate-200">Carteira de Ativos</h2>
               <span className="text-xs text-emerald-400 font-bold">Total: R$ {totalInvested.toFixed(2)}</span>
             </div>
+
+            {/* GRÁFICO 3: ALOCAÇÃO POR CLASSE DE ATIVO */}
+            {isMounted && assetClassChartData.length > 0 && (
+              <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl space-y-3">
+                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                  <PieIcon size={14} className="text-cyan-400" /> Distribuição da Carteira
+                </h3>
+                <div className="h-44 w-full flex items-center justify-center">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={assetClassChartData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={35}
+                        outerRadius={65}
+                        paddingAngle={4}
+                        dataKey="value"
+                      >
+                        {assetClassChartData.map((entry: any, index: number) => (
+                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip 
+                        contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px', fontSize: '12px' }}
+                        formatter={(value: any) => [`R$ ${Number(value).toFixed(2)}`, 'Total']}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800 text-[10px]">
+                  {assetClassChartData.map((asset: any, index: number) => (
+                    <div key={index} className="flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: COLORS[index % COLORS.length] }}></span>
+                      <span className="text-slate-400 truncate">{asset.name}:</span>
+                      <strong className="text-slate-200">R$ {asset.value.toFixed(0)}</strong>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {investments.length === 0 ? (
               <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl text-center space-y-2">
@@ -528,7 +680,6 @@ export default function Home() {
           <form onSubmit={handleSubmit} className="bg-slate-900 border border-slate-800 p-5 rounded-2xl space-y-4">
             <h2 className="text-base font-bold text-slate-200">Novo Registro</h2>
 
-            {/* Seletor de Tipo */}
             <div className="grid grid-cols-3 gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-[10px]">
               <button
                 type="button"
@@ -553,7 +704,6 @@ export default function Home() {
               </button>
             </div>
 
-            {/* Campos da Transação */}
             {entryType === 'transaction' && (
               <>
                 <div>
@@ -631,7 +781,6 @@ export default function Home() {
               </>
             )}
 
-            {/* Campos de Investimento */}
             {entryType === 'investment' && (
               <>
                 <div className="grid grid-cols-2 gap-2">
@@ -691,7 +840,6 @@ export default function Home() {
               </>
             )}
 
-            {/* Campos de Dividendos */}
             {entryType === 'dividend' && (
               <>
                 <div>
@@ -742,7 +890,6 @@ export default function Home() {
         )}
       </main>
 
-      {/* Navigation Bar Fixo */}
       <nav className="fixed bottom-0 w-full max-w-md bg-slate-900/90 backdrop-blur-lg border-t border-slate-800 flex justify-around p-2.5 z-20">
         <button
           onClick={() => setActiveTab('dash')}
