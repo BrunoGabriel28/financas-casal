@@ -12,7 +12,12 @@ import {
   Coins,
   Filter,
   PieChart as PieIcon,
-  BarChart3
+  BarChart3,
+  Trash2,
+  Edit2,
+  X,
+  Target,
+  PiggyBank
 } from 'lucide-react';
 import { 
   PieChart, 
@@ -26,14 +31,56 @@ import {
   YAxis 
 } from 'recharts';
 
-// Paleta de cores para os gráficos
+// Interfaces TypeScript
+interface Transaction {
+  id: string;
+  description: string;
+  amount: number;
+  type: 'income' | 'expense';
+  category: string;
+  paid_by: string;
+  date: string;
+}
+
+interface InvestmentAsset {
+  id: string;
+  ticker: string;
+  asset_class: string;
+  quantity: number;
+  average_price: number;
+  current_price?: number;
+  ceiling_price?: number;
+  owner?: string;
+}
+
+interface Dividend {
+  id: string;
+  ticker: string;
+  amount: number;
+  payment_date: string;
+}
+
+interface Goal {
+  id: string;
+  title: string;
+  target_amount: number;
+  current_amount: number;
+  deadline?: string;
+}
+
+interface ChartDataItem {
+  name: string;
+  value: number;
+}
+
 const COLORS = ['#10b981', '#06b6d4', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#3b82f6', '#64748b'];
 
 export default function Home() {
-  const [activeTab, setActiveTab] = useState<'dash' | 'finances' | 'investments' | 'dividends' | 'tools' | 'add'>('dash');
-  const [transactions, setTransactions] = useState<any[]>([]);
-  const [investments, setInvestments] = useState<any[]>([]);
-  const [dividends, setDividends] = useState<any[]>([]);
+  const [activeTab, setActiveTab] = useState<'dash' | 'finances' | 'investments' | 'dividends' | 'goals' | 'tools' | 'add'>('dash');
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [investments, setInvestments] = useState<InvestmentAsset[]>([]);
+  const [dividends, setDividends] = useState<Dividend[]>([]);
+  const [goals, setGoals] = useState<Goal[]>([]);
   const [isMounted, setIsMounted] = useState(false);
 
   // Estados dos Filtros
@@ -45,7 +92,10 @@ export default function Home() {
   const [endDate, setEndDate] = useState<string>(currentDate.toISOString().split('T')[0]);
 
   // Formulário Unificado
-  const [entryType, setEntryType] = useState<'transaction' | 'investment' | 'dividend'>('transaction');
+  const [entryType, setEntryType] = useState<'transaction' | 'investment' | 'dividend' | 'goal'>('transaction');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  
+  // Transações
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
   const [transType, setTransType] = useState<'income' | 'expense'>('expense');
@@ -60,6 +110,12 @@ export default function Home() {
   const [avgPrice, setAvgPrice] = useState('');
   const [ceilingPrice, setCeilingPrice] = useState('');
 
+  // Metas Form
+  const [goalTitle, setGoalTitle] = useState('');
+  const [goalTarget, setGoalTarget] = useState('');
+  const [goalCurrent, setGoalCurrent] = useState('');
+  const [goalDeadline, setGoalDeadline] = useState('');
+
   // Calculadora Proporcional
   const [incomeHe, setIncomeHe] = useState('');
   const [incomeShe, setIncomeShe] = useState('');
@@ -69,7 +125,7 @@ export default function Home() {
     setIsMounted(true);
   }, []);
 
-  // Buscar dados com base nos filtros
+  // Buscar dados
   async function loadData() {
     let transQuery = supabase.from('transactions').select('*').order('date', { ascending: false });
 
@@ -86,37 +142,47 @@ export default function Home() {
     }
 
     const { data: transData } = await transQuery;
-    if (transData) setTransactions(transData);
+    if (transData) setTransactions(transData as Transaction[]);
 
     const { data: invData } = await supabase.from('investment_assets').select('*');
-    if (invData) setInvestments(invData);
+    if (invData) setInvestments(invData as InvestmentAsset[]);
 
     const { data: divData } = await supabase.from('dividends').select('*').order('payment_date', { ascending: false });
-    if (divData) setDividends(divData);
+    if (divData) setDividends(divData as Dividend[]);
+
+    const { data: goalsData } = await supabase.from('goals').select('*');
+    if (goalsData) setGoals(goalsData as Goal[]);
   }
 
   useEffect(() => {
     loadData();
   }, [selectedMonth, selectedYear, filterType, startDate, endDate]);
 
-  // Adicionar Lançamento
+  // Salvar / Atualizar Lançamento
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
     try {
       if (entryType === 'transaction') {
-        const { error } = await supabase.from('transactions').insert([{
+        const payload = {
           description,
           amount: parseFloat(amount),
           type: transType,
           category,
           paid_by: paidBy,
           date: new Date(entryDate).toISOString()
-        }]);
-        if (error) throw error;
+        };
+
+        if (editingId) {
+          const { error } = await supabase.from('transactions').update(payload).eq('id', editingId);
+          if (error) throw error;
+        } else {
+          const { error } = await supabase.from('transactions').insert([payload]);
+          if (error) throw error;
+        }
 
       } else if (entryType === 'investment') {
-        const { error } = await supabase.from('investment_assets').insert([{
+        const payload = {
           ticker: ticker.toUpperCase(),
           asset_class: assetClass,
           quantity: parseFloat(quantity),
@@ -124,33 +190,146 @@ export default function Home() {
           current_price: parseFloat(avgPrice),
           ceiling_price: ceilingPrice ? parseFloat(ceilingPrice) : 0,
           owner: paidBy
-        }]);
-        if (error) throw error;
+        };
+
+        if (editingId) {
+          const { error } = await supabase.from('investment_assets').update(payload).eq('id', editingId);
+          if (error) throw error;
+        } else {
+          const { error } = await supabase.from('investment_assets').insert([payload]);
+          if (error) throw error;
+        }
 
       } else if (entryType === 'dividend') {
-        const { error } = await supabase.from('dividends').insert([{
+        const payload = {
           ticker: ticker.toUpperCase(),
           amount: parseFloat(amount),
           payment_date: entryDate
-        }]);
-        if (error) throw error;
+        };
+
+        if (editingId) {
+          const { error } = await supabase.from('dividends').update(payload).eq('id', editingId);
+          if (error) throw error;
+        } else {
+          const { error } = await supabase.from('dividends').insert([payload]);
+          if (error) throw error;
+        }
+
+      } else if (entryType === 'goal') {
+        const payload = {
+          title: goalTitle,
+          target_amount: parseFloat(goalTarget),
+          current_amount: goalCurrent ? parseFloat(goalCurrent) : 0,
+          deadline: goalDeadline || null
+        };
+
+        if (editingId) {
+          const { error } = await supabase.from('goals').update(payload).eq('id', editingId);
+          if (error) throw error;
+        } else {
+          const { error } = await supabase.from('goals').insert([payload]);
+          if (error) throw error;
+        }
       }
 
-      setDescription('');
-      setAmount('');
-      setTicker('');
-      setQuantity('');
-      setAvgPrice('');
-      setCeilingPrice('');
-
+      resetForm();
       await loadData();
       setActiveTab('dash');
-      alert('Lançamento salvo com sucesso!');
+      alert(editingId ? 'Atualizado com sucesso!' : 'Salvo com sucesso!');
 
-    } catch (err: any) {
-      console.error('Erro ao salvar lançamento:', err);
-      alert(`Erro ao salvar no banco de dados: ${err.message || 'Verifique a conexão.'}`);
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Verifique a conexão.';
+      console.error('Erro ao salvar:', err);
+      alert(`Erro no banco de dados: ${errorMessage}`);
     }
+  }
+
+  // Preparar edição
+  function handleEditTransaction(t: Transaction) {
+    setEntryType('transaction');
+    setEditingId(t.id);
+    setDescription(t.description);
+    setAmount(String(t.amount));
+    setTransType(t.type);
+    setCategory(t.category);
+    setPaidBy(t.paid_by);
+    setEntryDate(t.date ? new Date(t.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
+    setActiveTab('add');
+  }
+
+  function handleEditInvestment(inv: InvestmentAsset) {
+    setEntryType('investment');
+    setEditingId(inv.id);
+    setTicker(inv.ticker);
+    setAssetClass(inv.asset_class);
+    setQuantity(String(inv.quantity));
+    setAvgPrice(String(inv.average_price));
+    setCeilingPrice(inv.ceiling_price ? String(inv.ceiling_price) : '');
+    setPaidBy(inv.owner || 'Conjunto');
+    setActiveTab('add');
+  }
+
+  function handleEditDividend(d: Dividend) {
+    setEntryType('dividend');
+    setEditingId(d.id);
+    setTicker(d.ticker);
+    setAmount(String(d.amount));
+    setEntryDate(d.payment_date);
+    setActiveTab('add');
+  }
+
+  function handleEditGoal(g: Goal) {
+    setEntryType('goal');
+    setEditingId(g.id);
+    setGoalTitle(g.title);
+    setGoalTarget(String(g.target_amount));
+    setGoalCurrent(String(g.current_amount || 0));
+    setGoalDeadline(g.deadline || '');
+    setActiveTab('add');
+  }
+
+  // Funções de Exclusão
+  async function handleDeleteTransaction(id: string) {
+    if (!confirm('Tem certeza que deseja apagar este lançamento?')) return;
+    const { error } = await supabase.from('transactions').delete().eq('id', id);
+    if (error) alert('Erro ao excluir.');
+    else loadData();
+  }
+
+  async function handleDeleteInvestment(id: string) {
+    if (!confirm('Tem certeza que deseja remover este ativo da carteira?')) return;
+    const { error } = await supabase.from('investment_assets').delete().eq('id', id);
+    if (error) alert('Erro ao excluir.');
+    else loadData();
+  }
+
+  async function handleDeleteDividend(id: string) {
+    if (!confirm('Tem certeza que deseja remover este dividendo?')) return;
+    const { error } = await supabase.from('dividends').delete().eq('id', id);
+    if (error) alert('Erro ao excluir.');
+    else loadData();
+  }
+
+  async function handleDeleteGoal(id: string) {
+    if (!confirm('Tem certeza que deseja remover esta meta?')) return;
+    const { error } = await supabase.from('goals').delete().eq('id', id);
+    if (error) alert('Erro ao excluir.');
+    else loadData();
+  }
+
+  function resetForm() {
+    setEditingId(null);
+    setDescription('');
+    setAmount('');
+    setTicker('');
+    setQuantity('');
+    setAvgPrice('');
+    setCeilingPrice('');
+    setGoalTitle('');
+    setGoalTarget('');
+    setGoalCurrent('');
+    setGoalDeadline('');
+    setEntryDate(new Date().toISOString().split('T')[0]);
   }
 
   // Cálculos Financeiros
@@ -158,39 +337,32 @@ export default function Home() {
   const totalExpense = transactions.filter(t => t.type === 'expense').reduce((acc, t) => acc + Number(t.amount), 0);
   const monthlyBalance = totalIncome - totalExpense;
 
-  // Cálculos de Investimentos
   const totalInvested = investments.reduce((acc, inv) => acc + (Number(inv.quantity) * Number(inv.average_price)), 0);
   const totalDividends = dividends.reduce((acc, d) => acc + Number(d.amount), 0);
   const netWorth = monthlyBalance + totalInvested;
 
-  // Dados para o Gráfico de Categorias (Despesas)
+  // Gráfico 1: Gastos por Categoria
   const categoryChartData = transactions
     .filter(t => t.type === 'expense')
-    .reduce((acc: any[], t) => {
+    .reduce((acc: ChartDataItem[], t) => {
       const existing = acc.find(item => item.name === t.category);
-      if (existing) {
-        existing.value += Number(t.amount);
-      } else {
-        acc.push({ name: t.category, value: Number(t.amount) });
-      }
+      if (existing) existing.value += Number(t.amount);
+      else acc.push({ name: t.category, value: Number(t.amount) });
       return acc;
     }, []);
 
-  // Dados para o Gráfico Comparativo Receitas vs Despesas
+  // Gráfico 2: Receitas vs Despesas
   const comparisonChartData = [
     { name: 'Receitas', valor: totalIncome },
     { name: 'Despesas', valor: totalExpense },
   ];
 
-  // Dados para o Gráfico de Alocação por Classe de Ativo
-  const assetClassChartData = investments.reduce((acc: any[], inv) => {
+  // Gráfico 3: Alocação por Classe de Ativos
+  const assetClassChartData = investments.reduce((acc: ChartDataItem[], inv) => {
     const totalValue = Number(inv.quantity) * Number(inv.average_price);
     const existing = acc.find(item => item.name === inv.asset_class);
-    if (existing) {
-      existing.value += totalValue;
-    } else {
-      acc.push({ name: inv.asset_class, value: totalValue });
-    }
+    if (existing) existing.value += totalValue;
+    else acc.push({ name: inv.asset_class, value: totalValue });
     return acc;
   }, []);
 
@@ -211,22 +383,15 @@ export default function Home() {
   ];
 
   const monthsList = [
-    { value: 1, name: 'Janeiro' },
-    { value: 2, name: 'Fevereiro' },
-    { value: 3, name: 'Março' },
-    { value: 4, name: 'Abril' },
-    { value: 5, name: 'Maio' },
-    { value: 6, name: 'Junho' },
-    { value: 7, name: 'Julho' },
-    { value: 8, name: 'Agosto' },
-    { value: 9, name: 'Setembro' },
-    { value: 10, name: 'Outubro' },
-    { value: 11, name: 'Novembro' },
-    { value: 12, name: 'Dezembro' },
+    { value: 1, name: 'Janeiro' }, { value: 2, name: 'Fevereiro' }, { value: 3, name: 'Março' },
+    { value: 4, name: 'Abril' }, { value: 5, name: 'Maio' }, { value: 6, name: 'Junho' },
+    { value: 7, name: 'Julho' }, { value: 8, name: 'Agosto' }, { value: 9, name: 'Setembro' },
+    { value: 10, name: 'Outubro' }, { value: 11, name: 'Novembro' }, { value: 12, name: 'Dezembro' }
   ];
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center pb-24">
+      {/* Topbar Fixo */}
       <header className="w-full max-w-md bg-slate-900/90 backdrop-blur-md border-b border-slate-800 p-4 sticky top-0 z-10 flex justify-between items-center">
         <div>
           <h1 className="text-xl font-black bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-400 bg-clip-text text-transparent">
@@ -240,9 +405,10 @@ export default function Home() {
         </div>
       </header>
 
+      {/* Conteúdo Principal */}
       <main className="w-full max-w-md p-4 space-y-5">
 
-        {/* BARRA DE FILTROS */}
+        {/* --- BARRA DE FILTROS DE DATA --- */}
         {(activeTab === 'dash' || activeTab === 'finances') && (
           <div className="bg-slate-900 border border-slate-800 p-3 rounded-2xl space-y-2.5">
             <div className="flex items-center justify-between">
@@ -326,7 +492,7 @@ export default function Home() {
         {/* --- ABA 1: DASHBOARD --- */}
         {activeTab === 'dash' && (
           <>
-            {/* Card Patrimônio */}
+            {/* Card Patrimônio Líquido */}
             <div className="bg-gradient-to-br from-slate-900 via-slate-900 to-emerald-950/30 border border-slate-800 p-5 rounded-2xl shadow-xl relative overflow-hidden">
               <span className="text-[11px] text-slate-400 uppercase tracking-wider font-bold">Patrimônio Líquido do Casal</span>
               <p className="text-3xl font-black text-slate-100 mt-1">
@@ -348,7 +514,7 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Resumo Financeiro */}
+            {/* Resumo do Período */}
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-xl">
                 <p className="text-xs text-emerald-400 flex items-center gap-1 font-semibold">
@@ -382,7 +548,7 @@ export default function Home() {
                       <YAxis stroke="#94a3b8" fontSize={10} tickLine={false} axisLine={false} />
                       <Tooltip 
                         contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px', fontSize: '12px' }} 
-                        formatter={(value: any) => [`R$ ${Number(value).toFixed(2)}`, 'Valor']}
+                        formatter={(value: number | string | Array<number | string> | undefined) => [`R$ ${Number(value ?? 0).toFixed(2)}`, 'Valor']}
                       />
                       <Bar dataKey="valor" radius={[6, 6, 0, 0]}>
                         <Cell fill="#10b981" />
@@ -412,20 +578,19 @@ export default function Home() {
                         paddingAngle={4}
                         dataKey="value"
                       >
-                        {categoryChartData.map((entry: any, index: number) => (
+                        {categoryChartData.map((_entry: ChartDataItem, index: number) => (
                           <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                         ))}
                       </Pie>
                       <Tooltip 
                         contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px', fontSize: '12px' }}
-                        formatter={(value: any) => [`R$ ${Number(value).toFixed(2)}`, 'Gasto']}
+                        formatter={(value: number | string | Array<number | string> | undefined) => [`R$ ${Number(value ?? 0).toFixed(2)}`, 'Gasto']}
                       />
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
-                {/* Legendas das Categorias */}
                 <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800 text-[10px]">
-                  {categoryChartData.map((cat: any, index: number) => (
+                  {categoryChartData.map((cat: ChartDataItem, index: number) => (
                     <div key={index} className="flex items-center gap-1.5">
                       <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: COLORS[index % COLORS.length] }}></span>
                       <span className="text-slate-400 truncate">{cat.name}:</span>
@@ -436,7 +601,7 @@ export default function Home() {
               </div>
             )}
 
-            {/* Extrato do Período */}
+            {/* EXTRATO COM EDIÇÃO E EXCLUSÃO */}
             <div className="space-y-3">
               <div className="flex justify-between items-center">
                 <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Lançamentos do Período</h3>
@@ -460,14 +625,77 @@ export default function Home() {
                         <span>{t.paid_by}</span>
                       </div>
                     </div>
-                    <p className={`font-bold ${t.type === 'income' ? 'text-emerald-400' : 'text-rose-400'}`}>
-                      {t.type === 'income' ? '+' : '-'} R$ {Number(t.amount).toFixed(2)}
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <p className={`font-bold ${t.type === 'income' ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        {t.type === 'income' ? '+' : '-'} R$ {Number(t.amount).toFixed(2)}
+                      </p>
+                      <button onClick={() => handleEditTransaction(t)} className="p-1 text-slate-500 hover:text-amber-400 transition" title="Editar">
+                        <Edit2 size={13} />
+                      </button>
+                      <button onClick={() => handleDeleteTransaction(t.id)} className="p-1 text-slate-500 hover:text-rose-400 transition" title="Excluir">
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
                   </div>
                 ))
               )}
             </div>
           </>
+        )}
+
+        {/* --- ABA METAS DO CASAL --- */}
+        {activeTab === 'goals' && (
+          <div className="space-y-4">
+            <div className="flex justify-between items-center">
+              <h2 className="text-base font-bold text-slate-200 flex items-center gap-2">
+                <Target size={18} className="text-emerald-400" /> Metas & Objetivos
+              </h2>
+              <button 
+                onClick={() => { setEntryType('goal'); setActiveTab('add'); }} 
+                className="text-xs text-emerald-400 font-bold border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 rounded-lg"
+              >
+                + Nova Meta
+              </button>
+            </div>
+
+            {goals.length === 0 ? (
+              <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl text-center space-y-2">
+                <PiggyBank size={32} className="mx-auto text-slate-600" />
+                <p className="text-xs text-slate-400">Nenhuma meta cadastrada ainda.</p>
+              </div>
+            ) : (
+              goals.map((g) => {
+                const target = Number(g.target_amount) || 1;
+                const current = Number(g.current_amount) || 0;
+                const pct = Math.min(Math.round((current / target) * 100), 100);
+
+                return (
+                  <div key={g.id} className="bg-slate-900 border border-slate-800 p-4 rounded-xl space-y-3">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h3 className="text-sm font-bold text-slate-200">{g.title}</h3>
+                        {g.deadline && <p className="text-[10px] text-slate-500 mt-0.5">Prazo: {new Date(g.deadline).toLocaleDateString('pt-BR')}</p>}
+                      </div>
+                      <div className="flex gap-1">
+                        <button onClick={() => handleEditGoal(g)} className="p-1 text-slate-500 hover:text-amber-400"><Edit2 size={13} /></button>
+                        <button onClick={() => handleDeleteGoal(g.id)} className="p-1 text-slate-500 hover:text-rose-400"><Trash2 size={13} /></button>
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between text-xs mb-1 font-semibold">
+                        <span className="text-emerald-400">R$ {current.toFixed(2)}</span>
+                        <span className="text-slate-400">Meta: R$ {target.toFixed(2)} ({pct}%)</span>
+                      </div>
+                      <div className="w-full bg-slate-950 h-2.5 rounded-full overflow-hidden border border-slate-800">
+                        <div className="bg-gradient-to-r from-emerald-500 to-teal-400 h-full rounded-full transition-all duration-500" style={{ width: `${pct}%` }}></div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
         )}
 
         {/* --- ABA 2: FINANÇAS --- */}
@@ -521,19 +749,19 @@ export default function Home() {
                         paddingAngle={4}
                         dataKey="value"
                       >
-                        {assetClassChartData.map((entry: any, index: number) => (
+                        {assetClassChartData.map((_entry: ChartDataItem, index: number) => (
                           <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                         ))}
                       </Pie>
                       <Tooltip 
                         contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px', fontSize: '12px' }}
-                        formatter={(value: any) => [`R$ ${Number(value).toFixed(2)}`, 'Total']}
+                        formatter={(value: number | string | Array<number | string> | undefined) => [`R$ ${Number(value ?? 0).toFixed(2)}`, 'Total']}
                       />
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
                 <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800 text-[10px]">
-                  {assetClassChartData.map((asset: any, index: number) => (
+                  {assetClassChartData.map((asset: ChartDataItem, index: number) => (
                     <div key={index} className="flex items-center gap-1.5">
                       <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: COLORS[index % COLORS.length] }}></span>
                       <span className="text-slate-400 truncate">{asset.name}:</span>
@@ -555,7 +783,7 @@ export default function Home() {
             ) : (
               investments.map((inv) => {
                 const totalAsset = Number(inv.quantity) * Number(inv.average_price);
-                const isBelowCeiling = inv.ceiling_price > 0 && inv.current_price <= inv.ceiling_price;
+                const isBelowCeiling = (inv.ceiling_price ?? 0) > 0 && (inv.current_price ?? 0) <= (inv.ceiling_price ?? 0);
 
                 return (
                   <div key={inv.id} className="bg-slate-900 border border-slate-800 p-4 rounded-xl space-y-2">
@@ -566,7 +794,11 @@ export default function Home() {
                         </span>
                         <span className="text-[10px] text-slate-400 ml-2">{inv.asset_class}</span>
                       </div>
-                      <p className="text-xs font-bold text-slate-100">R$ {totalAsset.toFixed(2)}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-xs font-bold text-slate-100">R$ {totalAsset.toFixed(2)}</p>
+                        <button onClick={() => handleEditInvestment(inv)} className="p-1 text-slate-500 hover:text-amber-400" title="Editar"><Edit2 size={13} /></button>
+                        <button onClick={() => handleDeleteInvestment(inv.id)} className="p-1 text-slate-500 hover:text-rose-400" title="Excluir"><Trash2 size={13} /></button>
+                      </div>
                     </div>
 
                     <div className="grid grid-cols-3 gap-2 text-[10px] text-slate-400 pt-2 border-t border-slate-800/60">
@@ -579,7 +811,7 @@ export default function Home() {
                       <div>
                         <span>Preço Teto:</span> 
                         <strong className={`block ${isBelowCeiling ? 'text-emerald-400' : 'text-slate-200'}`}>
-                          {inv.ceiling_price > 0 ? `R$ ${Number(inv.ceiling_price).toFixed(2)}` : 'N/A'}
+                          {(inv.ceiling_price ?? 0) > 0 ? `R$ ${Number(inv.ceiling_price).toFixed(2)}` : 'N/A'}
                         </strong>
                       </div>
                     </div>
@@ -609,7 +841,11 @@ export default function Home() {
                       <p className="font-bold text-emerald-400">{d.ticker}</p>
                       <p className="text-[10px] text-slate-500">{new Date(d.payment_date).toLocaleDateString('pt-BR')}</p>
                     </div>
-                    <p className="font-bold text-slate-100">+ R$ {Number(d.amount).toFixed(2)}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="font-bold text-slate-100">+ R$ {Number(d.amount).toFixed(2)}</p>
+                      <button onClick={() => handleEditDividend(d)} className="p-1 text-slate-500 hover:text-amber-400"><Edit2 size={13} /></button>
+                      <button onClick={() => handleDeleteDividend(d.id)} className="p-1 text-slate-500 hover:text-rose-400"><Trash2 size={13} /></button>
+                    </div>
                   </div>
                 ))
               )}
@@ -678,31 +914,47 @@ export default function Home() {
         {/* --- ABA DE REGISTRO UNIFICADO --- */}
         {activeTab === 'add' && (
           <form onSubmit={handleSubmit} className="bg-slate-900 border border-slate-800 p-5 rounded-2xl space-y-4">
-            <h2 className="text-base font-bold text-slate-200">Novo Registro</h2>
-
-            <div className="grid grid-cols-3 gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-[10px]">
-              <button
-                type="button"
-                onClick={() => setEntryType('transaction')}
-                className={`py-2 rounded-lg font-bold ${entryType === 'transaction' ? 'bg-emerald-500 text-slate-950' : 'text-slate-400'}`}
-              >
-                Transação
-              </button>
-              <button
-                type="button"
-                onClick={() => setEntryType('investment')}
-                className={`py-2 rounded-lg font-bold ${entryType === 'investment' ? 'bg-emerald-500 text-slate-950' : 'text-slate-400'}`}
-              >
-                Investimento
-              </button>
-              <button
-                type="button"
-                onClick={() => setEntryType('dividend')}
-                className={`py-2 rounded-lg font-bold ${entryType === 'dividend' ? 'bg-emerald-500 text-slate-950' : 'text-slate-400'}`}
-              >
-                Dividendo
-              </button>
+            <div className="flex justify-between items-center">
+              <h2 className="text-base font-bold text-slate-200">{editingId ? 'Editar Registro' : 'Novo Registro'}</h2>
+              {editingId && (
+                <button type="button" onClick={resetForm} className="text-xs text-rose-400 flex items-center gap-1">
+                  <X size={14} /> Cancelar Edição
+                </button>
+              )}
             </div>
+
+            {!editingId && (
+              <div className="grid grid-cols-4 gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-[9px]">
+                <button
+                  type="button"
+                  onClick={() => setEntryType('transaction')}
+                  className={`py-2 rounded-lg font-bold ${entryType === 'transaction' ? 'bg-emerald-500 text-slate-950' : 'text-slate-400'}`}
+                >
+                  Transação
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEntryType('investment')}
+                  className={`py-2 rounded-lg font-bold ${entryType === 'investment' ? 'bg-emerald-500 text-slate-950' : 'text-slate-400'}`}
+                >
+                  Investimento
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEntryType('dividend')}
+                  className={`py-2 rounded-lg font-bold ${entryType === 'dividend' ? 'bg-emerald-500 text-slate-950' : 'text-slate-400'}`}
+                >
+                  Dividendo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEntryType('goal')}
+                  className={`py-2 rounded-lg font-bold ${entryType === 'goal' ? 'bg-emerald-500 text-slate-950' : 'text-slate-400'}`}
+                >
+                  Meta
+                </button>
+              </div>
+            )}
 
             {entryType === 'transaction' && (
               <>
@@ -754,17 +1006,17 @@ export default function Home() {
                       ))}
                     </select>
                   </div>
-                    <div>
-                      <label className="text-[10px] text-slate-400 block mb-1">Tipo</label>
-                      <select
-                        value={transType}
-                        onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setTransType(e.target.value as 'income' | 'expense')}
-                        className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-100"
-                      >
-                        <option value="expense">Despesa</option>
-                        <option value="income">Receita</option>
-                      </select>
-                    </div>
+                  <div>
+                    <label className="text-[10px] text-slate-400 block mb-1">Tipo</label>
+                    <select
+                      value={transType}
+                      onChange={(e) => setTransType(e.target.value as 'income' | 'expense')}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-100"
+                    >
+                      <option value="expense">Despesa</option>
+                      <option value="income">Receita</option>
+                    </select>
+                  </div>
                   <div>
                     <label className="text-[10px] text-slate-400 block mb-1">Pagador</label>
                     <select
@@ -880,19 +1132,70 @@ export default function Home() {
               </>
             )}
 
+            {entryType === 'goal' && (
+              <>
+                <div>
+                  <label className="text-[10px] text-slate-400 block mb-1">Título da Meta</label>
+                  <input
+                    type="text"
+                    value={goalTitle}
+                    onChange={(e) => setGoalTitle(e.target.value)}
+                    placeholder="Ex: Reserva de Emergência, Viagem"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-100"
+                    required
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[10px] text-slate-400 block mb-1">Valor Objetivo (R$)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={goalTarget}
+                      onChange={(e) => setGoalTarget(e.target.value)}
+                      placeholder="10000.00"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-100"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-slate-400 block mb-1">Valor Atual Guardado (R$)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={goalCurrent}
+                      onChange={(e) => setGoalCurrent(e.target.value)}
+                      placeholder="1500.00"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-100"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-[10px] text-slate-400 block mb-1">Prazo Limite (Opcional)</label>
+                  <input
+                    type="date"
+                    value={goalDeadline}
+                    onChange={(e) => setGoalDeadline(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-100"
+                  />
+                </div>
+              </>
+            )}
+
             <button
               type="submit"
               className="w-full bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold p-3.5 rounded-xl transition duration-200 mt-2"
             >
-              Salvar Dados
+              {editingId ? 'Atualizar Registro' : 'Salvar Dados'}
             </button>
           </form>
         )}
       </main>
 
+      {/* Navigation Bar Fixo */}
       <nav className="fixed bottom-0 w-full max-w-md bg-slate-900/90 backdrop-blur-lg border-t border-slate-800 flex justify-around p-2.5 z-20">
         <button
-          onClick={() => setActiveTab('dash')}
+          onClick={() => { resetForm(); setActiveTab('dash'); }}
           className={`flex flex-col items-center gap-1 ${activeTab === 'dash' ? 'text-emerald-400' : 'text-slate-500'}`}
         >
           <Wallet size={18} />
@@ -900,7 +1203,22 @@ export default function Home() {
         </button>
 
         <button
-          onClick={() => setActiveTab('investments')}
+          onClick={() => { resetForm(); setActiveTab('goals'); }}
+          className={`flex flex-col items-center gap-1 ${activeTab === 'goals' ? 'text-emerald-400' : 'text-slate-500'}`}
+        >
+          <Target size={18} />
+          <span className="text-[9px] font-medium">Metas</span>
+        </button>
+
+        <button
+          onClick={() => { resetForm(); setActiveTab('add'); }}
+          className="flex flex-col items-center justify-center -mt-5 bg-emerald-500 text-slate-950 p-3 rounded-full shadow-lg hover:bg-emerald-400 transition"
+        >
+          <PlusCircle size={22} />
+        </button>
+
+        <button
+          onClick={() => { resetForm(); setActiveTab('investments'); }}
           className={`flex flex-col items-center gap-1 ${activeTab === 'investments' ? 'text-emerald-400' : 'text-slate-500'}`}
         >
           <TrendingUp size={18} />
@@ -908,22 +1226,7 @@ export default function Home() {
         </button>
 
         <button
-          onClick={() => setActiveTab('add')}
-          className="flex flex-col items-center justify-center -mt-5 bg-emerald-500 text-slate-950 p-3 rounded-full shadow-lg hover:bg-emerald-400 transition"
-        >
-          <PlusCircle size={22} />
-        </button>
-
-        <button
-          onClick={() => setActiveTab('dividends')}
-          className={`flex flex-col items-center gap-1 ${activeTab === 'dividends' ? 'text-emerald-400' : 'text-slate-500'}`}
-        >
-          <Coins size={18} />
-          <span className="text-[9px] font-medium">Proventos</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('tools')}
+          onClick={() => { resetForm(); setActiveTab('tools'); }}
           className={`flex flex-col items-center gap-1 ${activeTab === 'tools' ? 'text-emerald-400' : 'text-slate-500'}`}
         >
           <Calculator size={18} />
