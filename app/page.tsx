@@ -5,26 +5,29 @@ import { supabase } from '@/lib/supabase';
 import { 
   Wallet, 
   TrendingUp, 
-  DollarSign, 
   PlusCircle, 
-  Target, 
   Calculator, 
-  PieChart as PieIcon,
-  BarChart3,
-  Layers,
-  Sparkles,
-  ArrowUpRight,
-  ArrowDownRight,
-  ShieldAlert,
-  Coins
+  ArrowUpRight, 
+  ArrowDownRight, 
+  Coins,
+  Calendar,
+  Filter,
+  RefreshCw
 } from 'lucide-react';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis } from 'recharts';
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<'dash' | 'finances' | 'investments' | 'dividends' | 'tools' | 'add'>('dash');
   const [transactions, setTransactions] = useState<any[]>([]);
   const [investments, setInvestments] = useState<any[]>([]);
   const [dividends, setDividends] = useState<any[]>([]);
+
+  // Estados dos Filtros
+  const currentDate = new Date();
+  const [filterType, setFilterType] = useState<'month_year' | 'range' | 'all'>('month_year');
+  const [selectedMonth, setSelectedMonth] = useState<number>(currentDate.getMonth() + 1);
+  const [selectedYear, setSelectedYear] = useState<number>(currentDate.getFullYear());
+  const [startDate, setStartDate] = useState<string>(`${currentDate.getFullYear()}-01-01`);
+  const [endDate, setEndDate] = useState<string>(currentDate.toISOString().split('T')[0]);
 
   // Formulário Unificado
   const [entryType, setEntryType] = useState<'transaction' | 'investment' | 'dividend'>('transaction');
@@ -33,6 +36,7 @@ export default function Home() {
   const [transType, setTransType] = useState<'income' | 'expense'>('expense');
   const [category, setCategory] = useState('Mercado');
   const [paidBy, setPaidBy] = useState('Conjunto');
+  const [entryDate, setEntryDate] = useState<string>(new Date().toISOString().split('T')[0]);
 
   // Investimentos Form
   const [ticker, setTicker] = useState('');
@@ -46,23 +50,38 @@ export default function Home() {
   const [incomeShe, setIncomeShe] = useState('');
   const [totalBills, setTotalBills] = useState('');
 
-  // Buscar dados
+  // Buscar dados com base nos filtros
   async function loadData() {
-    const { data: transData, error: transError } = await supabase.from('transactions').select('*').order('date', { ascending: false });
+    let transQuery = supabase.from('transactions').select('*').order('date', { ascending: false });
+
+    // Aplicar filtros de data nas transações
+    if (filterType === 'month_year') {
+      const startOfMonth = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-01T00:00:00.000Z`;
+      const lastDay = new Date(selectedYear, selectedMonth, 0).getDate();
+      const endOfMonth = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}T23:59:59.999Z`;
+
+      transQuery = transQuery.gte('date', startOfMonth).lte('date', endOfMonth);
+    } else if (filterType === 'range') {
+      if (startDate && endDate) {
+        transQuery = transQuery.gte('date', `${startDate}T00:00:00.000Z`).lte('date', `${endDate}T23:59:59.999Z`);
+      }
+    }
+
+    const { data: transData } = await transQuery;
     if (transData) setTransactions(transData);
 
-    const { data: invData, error: invError } = await supabase.from('investment_assets').select('*');
+    const { data: invData } = await supabase.from('investment_assets').select('*');
     if (invData) setInvestments(invData);
 
-    const { data: divData, error: divError } = await supabase.from('dividends').select('*');
+    const { data: divData } = await supabase.from('dividends').select('*').order('payment_date', { ascending: false });
     if (divData) setDividends(divData);
   }
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [selectedMonth, selectedYear, filterType, startDate, endDate]);
 
-  // Adicionar Lançamento Unificado (Corrigido com validação e tratamento de erro)
+  // Adicionar Lançamento Unificado
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
@@ -74,7 +93,7 @@ export default function Home() {
           type: transType,
           category,
           paid_by: paidBy,
-          date: new Date().toISOString()
+          date: new Date(entryDate).toISOString()
         }]);
         if (error) throw error;
 
@@ -94,12 +113,12 @@ export default function Home() {
         const { error } = await supabase.from('dividends').insert([{
           ticker: ticker.toUpperCase(),
           amount: parseFloat(amount),
-          payment_date: new Date().toISOString().split('T')[0]
+          payment_date: entryDate
         }]);
         if (error) throw error;
       }
 
-      // Limpeza dos estados
+      // Limpeza dos campos
       setDescription('');
       setAmount('');
       setTicker('');
@@ -107,14 +126,13 @@ export default function Home() {
       setAvgPrice('');
       setCeilingPrice('');
 
-      // Recarrega os dados e redireciona
       await loadData();
       setActiveTab('dash');
       alert('Lançamento salvo com sucesso!');
 
     } catch (err: any) {
       console.error('Erro ao salvar lançamento:', err);
-      alert(`Erro ao salvar no banco de dados: ${err.message || 'Verifique as permissões ou conexões.'}`);
+      alert(`Erro ao salvar no banco de dados: ${err.message || 'Verifique a conexão.'}`);
     }
   }
 
@@ -128,7 +146,7 @@ export default function Home() {
   const totalDividends = dividends.reduce((acc, d) => acc + Number(d.amount), 0);
   const netWorth = monthlyBalance + totalInvested;
 
-  // Cálculos da Calculadora
+  // Calculadora
   const valHe = parseFloat(incomeHe) || 0;
   const valShe = parseFloat(incomeShe) || 0;
   const valBills = parseFloat(totalBills) || 0;
@@ -142,6 +160,21 @@ export default function Home() {
     'Alimentação', 'Animais de Estimação', 'Assinaturas/Serviços', 'Casa/Moradia', 
     'Cuidados Pessoais', 'Despesas Pessoais', 'Dívidas/Empréstimos', 'Educação', 
     'Impostos/Taxas', 'Lazer', 'Mercado', 'Saúde', 'Transportes', 'Vestuário', 'Investimentos'
+  ];
+
+  const monthsList = [
+    { value: 1, name: 'Janeiro' },
+    { value: 2, name: 'Fevereiro' },
+    { value: 3, name: 'Março' },
+    { value: 4, name: 'Abril' },
+    { value: 5, name: 'Maio' },
+    { value: 6, name: 'Junho' },
+    { value: 7, name: 'Julho' },
+    { value: 8, name: 'Agosto' },
+    { value: 9, name: 'Setembro' },
+    { value: 10, name: 'Outubro' },
+    { value: 11, name: 'Novembro' },
+    { value: 12, name: 'Dezembro' },
   ];
 
   return (
@@ -163,21 +196,101 @@ export default function Home() {
       {/* Conteúdo Principal */}
       <main className="w-full max-w-md p-4 space-y-5">
 
-        {/* --- ABA 1: DASHBOARD PATRIMONIAL --- */}
+        {/* --- BARRA DE FILTROS DE DATA --- */}
+        {(activeTab === 'dash' || activeTab === 'finances') && (
+          <div className="bg-slate-900 border border-slate-800 p-3 rounded-2xl space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold text-slate-400 uppercase flex items-center gap-1.5">
+                <Filter size={13} className="text-emerald-400" /> Filtro de Período
+              </span>
+              <div className="flex gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800 text-[10px]">
+                <button
+                  type="button"
+                  onClick={() => setFilterType('month_year')}
+                  className={`px-2 py-0.5 rounded font-semibold ${filterType === 'month_year' ? 'bg-emerald-500 text-slate-950' : 'text-slate-400'}`}
+                >
+                  Mês/Ano
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterType('range')}
+                  className={`px-2 py-0.5 rounded font-semibold ${filterType === 'range' ? 'bg-emerald-500 text-slate-950' : 'text-slate-400'}`}
+                >
+                  Intervalo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterType('all')}
+                  className={`px-2 py-0.5 rounded font-semibold ${filterType === 'all' ? 'bg-emerald-500 text-slate-950' : 'text-slate-400'}`}
+                >
+                  Tudo
+                </button>
+              </div>
+            </div>
+
+            {/* Filtro Mês/Ano */}
+            {filterType === 'month_year' && (
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                <select
+                  value={selectedMonth}
+                  onChange={(e) => setSelectedMonth(Number(e.target.value))}
+                  className="bg-slate-950 border border-slate-800 text-slate-200 text-xs rounded-xl p-2 focus:outline-none focus:border-emerald-500"
+                >
+                  {monthsList.map((m) => (
+                    <option key={m.value} value={m.value}>{m.name}</option>
+                  ))}
+                </select>
+
+                <select
+                  value={selectedYear}
+                  onChange={(e) => setSelectedYear(Number(e.target.value))}
+                  className="bg-slate-950 border border-slate-800 text-slate-200 text-xs rounded-xl p-2 focus:outline-none focus:border-emerald-500"
+                >
+                  <option value={2025}>2025</option>
+                  <option value={2026}>2026</option>
+                  <option value={2027}>2027</option>
+                </select>
+              </div>
+            )}
+
+            {/* Filtro por Intervalo de Datas */}
+            {filterType === 'range' && (
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                <div>
+                  <label className="text-[9px] text-slate-400 block mb-0.5">De:</label>
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 text-slate-200 text-xs rounded-xl p-2 focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-[9px] text-slate-400 block mb-0.5">Até:</label>
+                  <input
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 text-slate-200 text-xs rounded-xl p-2 focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* --- ABA 1: DASHBOARD --- */}
         {activeTab === 'dash' && (
           <>
             {/* Card Patrimônio Líquido */}
             <div className="bg-gradient-to-br from-slate-900 via-slate-900 to-emerald-950/30 border border-slate-800 p-5 rounded-2xl shadow-xl relative overflow-hidden">
-              <div className="absolute top-0 right-0 p-3 opacity-10">
-                <Sparkles size={80} className="text-emerald-400" />
-              </div>
               <span className="text-[11px] text-slate-400 uppercase tracking-wider font-bold">Patrimônio Líquido do Casal</span>
               <p className="text-3xl font-black text-slate-100 mt-1">
                 R$ {netWorth.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
               </p>
               <div className="mt-4 pt-3 border-t border-slate-800/80 grid grid-cols-2 gap-2 text-xs">
                 <div>
-                  <span className="text-slate-400 block text-[10px]">Saldo em Conta</span>
+                  <span className="text-slate-400 block text-[10px]">Saldo do Período</span>
                   <span className={`font-bold ${monthlyBalance >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                     R$ {monthlyBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                   </span>
@@ -191,11 +304,11 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Resumo Mensal */}
+            {/* Resumo do Período */}
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-xl">
                 <p className="text-xs text-emerald-400 flex items-center gap-1 font-semibold">
-                  <ArrowUpRight size={14} /> Receitas Mês
+                  <ArrowUpRight size={14} /> Receitas
                 </p>
                 <p className="text-base font-bold text-slate-100 mt-1">
                   R$ {totalIncome.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
@@ -204,7 +317,7 @@ export default function Home() {
 
               <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-xl">
                 <p className="text-xs text-rose-400 flex items-center gap-1 font-semibold">
-                  <ArrowDownRight size={14} /> Despesas Mês
+                  <ArrowDownRight size={14} /> Despesas
                 </p>
                 <p className="text-base font-bold text-slate-100 mt-1">
                   R$ {totalExpense.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
@@ -212,57 +325,60 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Card Dividendos do Mês */}
-            <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl flex justify-between items-center">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-emerald-500/10 text-emerald-400 rounded-lg">
-                  <Coins size={20} />
-                </div>
-                <div>
-                  <p className="text-xs text-slate-400 font-medium">Proventos Recebidos</p>
-                  <p className="text-base font-bold text-emerald-400">R$ {totalDividends.toFixed(2)}</p>
-                </div>
-              </div>
-              <button onClick={() => setActiveTab('dividends')} className="text-xs text-slate-400 hover:text-emerald-400 underline">
-                Ver detalhes
-              </button>
-            </div>
-
-            {/* Extrato Recente */}
+            {/* Extrato do Período Filtrado */}
             <div className="space-y-3">
               <div className="flex justify-between items-center">
-                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Lançamentos Recentes</h3>
+                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Lançamentos do Período</h3>
                 <span className="text-[10px] text-slate-500">{transactions.length} itens</span>
               </div>
 
-              {transactions.slice(0, 5).map((t) => (
-                <div key={t.id} className="bg-slate-900 border border-slate-800 p-3 rounded-xl flex justify-between items-center text-xs">
-                  <div>
-                    <p className="font-semibold text-slate-200">{t.description}</p>
-                    <span className="text-[10px] text-slate-500">Pago por: {t.paid_by}</span>
-                  </div>
-                  <p className={`font-bold ${t.type === 'income' ? 'text-emerald-400' : 'text-rose-400'}`}>
-                    {t.type === 'income' ? '+' : '-'} R$ {Number(t.amount).toFixed(2)}
-                  </p>
+              {transactions.length === 0 ? (
+                <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl text-center">
+                  <p className="text-xs text-slate-500">Nenhum lançamento encontrado para este período.</p>
                 </div>
-              ))}
+              ) : (
+                transactions.map((t) => (
+                  <div key={t.id} className="bg-slate-900 border border-slate-800 p-3 rounded-xl flex justify-between items-center text-xs">
+                    <div>
+                      <p className="font-semibold text-slate-200">{t.description}</p>
+                      <div className="flex gap-2 text-[10px] text-slate-500 mt-0.5">
+                        <span>{new Date(t.date).toLocaleDateString('pt-BR')}</span>
+                        <span>•</span>
+                        <span>{t.category}</span>
+                        <span>•</span>
+                        <span>{t.paid_by}</span>
+                      </div>
+                    </div>
+                    <p className={`font-bold ${t.type === 'income' ? 'text-emerald-400' : 'text-rose-400'}`}>
+                      {t.type === 'income' ? '+' : '-'} R$ {Number(t.amount).toFixed(2)}
+                    </p>
+                  </div>
+                ))
+              )}
             </div>
           </>
         )}
 
-        {/* --- ABA 2: FINANÇAS & ORÇAMENTO --- */}
+        {/* --- ABA 2: FINANÇAS --- */}
         {activeTab === 'finances' && (
           <div className="space-y-4">
-            <h2 className="text-base font-bold text-slate-200">Orçamento & Categorias</h2>
+            <h2 className="text-base font-bold text-slate-200">Categorias & Orçamento</h2>
             <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl text-xs space-y-3">
-              <p className="text-slate-400">Controle de gastos por categorias baseadas nas suas planilhas:</p>
               <div className="grid grid-cols-2 gap-2">
-                {categoriesList.map((cat, idx) => (
-                  <div key={idx} className="bg-slate-950 p-2.5 rounded-lg border border-slate-800/80">
-                    <p className="text-slate-300 font-medium">{cat}</p>
-                    <p className="text-[10px] text-slate-500 mt-1">Previsto vs Realizado</p>
-                  </div>
-                ))}
+                {categoriesList.map((cat, idx) => {
+                  const catTotal = transactions
+                    .filter(t => t.category === cat && t.type === 'expense')
+                    .reduce((acc, t) => acc + Number(t.amount), 0);
+
+                  return (
+                    <div key={idx} className="bg-slate-950 p-2.5 rounded-lg border border-slate-800/80">
+                      <p className="text-slate-300 font-medium truncate">{cat}</p>
+                      <p className="text-xs font-bold text-rose-400 mt-1">
+                        R$ {catTotal.toFixed(2)}
+                      </p>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -339,7 +455,7 @@ export default function Home() {
                   <div key={d.id} className="bg-slate-900 border border-slate-800 p-3 rounded-xl flex justify-between items-center text-xs">
                     <div>
                       <p className="font-bold text-emerald-400">{d.ticker}</p>
-                      <p className="text-[10px] text-slate-500">{d.payment_date}</p>
+                      <p className="text-[10px] text-slate-500">{new Date(d.payment_date).toLocaleDateString('pt-BR')}</p>
                     </div>
                     <p className="font-bold text-slate-100">+ R$ {Number(d.amount).toFixed(2)}</p>
                   </div>
@@ -349,10 +465,9 @@ export default function Home() {
           </div>
         )}
 
-        {/* --- ABA 5: FERRAMENTAS DO CASAL --- */}
+        {/* --- ABA 5: FERRAMENTAS --- */}
         {activeTab === 'tools' && (
           <div className="space-y-4">
-            {/* Calculadora Proporcional */}
             <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl space-y-4">
               <h2 className="text-sm font-bold text-slate-200 flex items-center gap-2">
                 <Calculator size={16} className="text-emerald-400" /> Divisão Proporcional por Renda
@@ -408,12 +523,12 @@ export default function Home() {
           </div>
         )}
 
-        {/* --- ABA DE CADASTRO UNIFICADO --- */}
+        {/* --- ABA DE REGISTRO UNIFICADO --- */}
         {activeTab === 'add' && (
           <form onSubmit={handleSubmit} className="bg-slate-900 border border-slate-800 p-5 rounded-2xl space-y-4">
             <h2 className="text-base font-bold text-slate-200">Novo Registro</h2>
 
-            {/* Seletor de Tipo de Registro */}
+            {/* Seletor de Tipo */}
             <div className="grid grid-cols-3 gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-[10px]">
               <button
                 type="button"
@@ -438,7 +553,7 @@ export default function Home() {
               </button>
             </div>
 
-            {/* Campos de Transação */}
+            {/* Campos da Transação */}
             {entryType === 'transaction' && (
               <>
                 <div>
@@ -466,6 +581,18 @@ export default function Home() {
                     />
                   </div>
                   <div>
+                    <label className="text-[10px] text-slate-400 block mb-1">Data</label>
+                    <input
+                      type="date"
+                      value={entryDate}
+                      onChange={(e) => setEntryDate(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-100"
+                      required
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
                     <label className="text-[10px] text-slate-400 block mb-1">Categoria</label>
                     <select
                       value={category}
@@ -477,19 +604,17 @@ export default function Home() {
                       ))}
                     </select>
                   </div>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="text-[10px] text-slate-400 block mb-1">Tipo</label>
-                    <select
-                      value={transType}
-                      onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setTransType(e.target.value as 'income' | 'expense')}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-100"
-                    >
-                      <option value="expense">Despesa</option>
-                      <option value="income">Receita</option>
-                    </select>
-                  </div>
+                    <div>
+                      <label className="text-[10px] text-slate-400 block mb-1">Tipo</label>
+                      <select
+                        value={transType}
+                        onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setTransType(e.target.value as 'income' | 'expense')}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-100"
+                      >
+                        <option value="expense">Despesa</option>
+                        <option value="income">Receita</option>
+                      </select>
+                    </div>
                   <div>
                     <label className="text-[10px] text-slate-400 block mb-1">Pagador</label>
                     <select
@@ -563,18 +688,6 @@ export default function Home() {
                     />
                   </div>
                 </div>
-
-                <div>
-                  <label className="text-[10px] text-slate-400 block mb-1">Preço Teto (R$) - Opcional</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={ceilingPrice}
-                    onChange={(e) => setCeilingPrice(e.target.value)}
-                    placeholder="175.00"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-100"
-                  />
-                </div>
               </>
             )}
 
@@ -592,17 +705,29 @@ export default function Home() {
                     required
                   />
                 </div>
-                <div>
-                  <label className="text-[10px] text-slate-400 block mb-1">Valor do Provento Recebido (R$)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                    placeholder="12.50"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-100"
-                    required
-                  />
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[10px] text-slate-400 block mb-1">Valor Recebido (R$)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={amount}
+                      onChange={(e) => setAmount(e.target.value)}
+                      placeholder="12.50"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-100"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-slate-400 block mb-1">Data Pagamento</label>
+                    <input
+                      type="date"
+                      value={entryDate}
+                      onChange={(e) => setEntryDate(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-100"
+                      required
+                    />
+                  </div>
                 </div>
               </>
             )}
@@ -617,7 +742,7 @@ export default function Home() {
         )}
       </main>
 
-      {/* Navigation Bar Fixo estilo App Mobile */}
+      {/* Navigation Bar Fixo */}
       <nav className="fixed bottom-0 w-full max-w-md bg-slate-900/90 backdrop-blur-lg border-t border-slate-800 flex justify-around p-2.5 z-20">
         <button
           onClick={() => setActiveTab('dash')}
