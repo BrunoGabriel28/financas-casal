@@ -505,7 +505,7 @@ export default function Home() {
       <header className="w-full max-w-md bg-slate-900/90 backdrop-blur-md border-b border-slate-800 p-4 sticky top-0 z-10 flex justify-between items-center">
         <div>
           <h1 className="text-xl font-black bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-400 bg-clip-text text-transparent">
-            FINANÇAS CASAL PRO
+            FINANÇAS EM CASAL
           </h1>
           <p className="text-[10px] text-slate-400 uppercase tracking-widest font-semibold">Gestão & Patrimônio Consolidado</p>
         </div>
