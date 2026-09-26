@@ -39,6 +39,12 @@ import {
   YAxis 
 } from 'recharts';
 
+// Nomes fixos do casal (pode alterar aqui a qualquer momento se precisar)
+const COUPLE_NAMES = {
+  HE: 'Bruno',
+  SHE: 'Wilma'
+};
+
 // Interfaces TypeScript Estritas
 interface Transaction {
   id: string;
@@ -116,7 +122,7 @@ export default function Home() {
   // Estado para controlar o Modal de Detalhes (Fixo vs Variável)
   const [modalNature, setModalNature] = useState<'fixo' | 'variavel' | null>(null);
 
-  // Estados dos Filtros (adicionado 'year')
+  // Estados dos Filtros
   const currentDate = new Date();
   const [filterType, setFilterType] = useState<'month_year' | 'year' | 'range' | 'all'>('month_year');
   const [selectedMonth, setSelectedMonth] = useState<number>(currentDate.getMonth() + 1);
@@ -468,6 +474,7 @@ export default function Home() {
     setExpenseNature('variavel');
     setIsRecurring(false);
     setRecurrenceMonths('12');
+    setPaidBy('Conjunto');
     setEntryDate(new Date().toISOString().split('T')[0]);
   }
 
@@ -564,15 +571,19 @@ export default function Home() {
           <p className="text-[10px] text-slate-400 uppercase tracking-widest font-semibold">Gestão & Patrimônio Consolidado</p>
         </div>
         <div className="flex items-center gap-1">
-          <span className="w-7 h-7 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-xs border border-emerald-500/30">E</span>
-          <span className="w-7 h-7 rounded-full bg-teal-500/20 text-teal-400 flex items-center justify-center font-bold text-xs border border-teal-500/30">D</span>
+          <span className="w-7 h-7 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-xs border border-emerald-500/30" title={COUPLE_NAMES.HE}>
+            {COUPLE_NAMES.HE.charAt(0)}
+          </span>
+          <span className="w-7 h-7 rounded-full bg-teal-500/20 text-teal-400 flex items-center justify-center font-bold text-xs border border-teal-500/30" title={COUPLE_NAMES.SHE}>
+            {COUPLE_NAMES.SHE.charAt(0)}
+          </span>
         </div>
       </header>
 
       {/* Conteúdo Principal */}
       <main className="w-full max-w-md p-4 space-y-5">
 
-        {/* BARRA DE FILTROS DE DATA ATUALIZADA */}
+        {/* BARRA DE FILTROS DE DATA */}
         {(activeTab === 'dash' || activeTab === 'finances' || activeTab === 'budgets') && (
           <div className="bg-slate-900 border border-slate-800 p-3 rounded-2xl space-y-2.5">
             <div className="flex items-center justify-between">
@@ -1219,7 +1230,7 @@ export default function Home() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] text-slate-400 block mb-1">Salário Ele (R$)</label>
+                  <label className="text-[10px] text-slate-400 block mb-1">Renda {COUPLE_NAMES.HE} (R$)</label>
                   <input
                     type="number"
                     value={incomeHe}
@@ -1229,7 +1240,7 @@ export default function Home() {
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] text-slate-400 block mb-1">Salário Dela (R$)</label>
+                  <label className="text-[10px] text-slate-400 block mb-1">Renda {COUPLE_NAMES.SHE} (R$)</label>
                   <input
                     type="number"
                     value={incomeShe}
@@ -1254,11 +1265,11 @@ export default function Home() {
               {sumIncome > 0 && valBills > 0 && (
                 <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-1.5 text-xs">
                   <div className="flex justify-between">
-                    <span className="text-slate-400">Ele ({pctHe.toFixed(1)}%):</span>
+                    <span className="text-slate-400">{COUPLE_NAMES.HE} ({pctHe.toFixed(1)}%):</span>
                     <span className="font-bold text-emerald-400">R$ {payHe.toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-400">Dela ({pctShe.toFixed(1)}%):</span>
+                    <span className="text-slate-400">{COUPLE_NAMES.SHE} ({pctShe.toFixed(1)}%):</span>
                     <span className="font-bold text-teal-400">R$ {payShe.toFixed(2)}</span>
                   </div>
                 </div>
@@ -1388,8 +1399,8 @@ export default function Home() {
                       className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-100"
                     >
                       <option value="Conjunto">Conjunto</option>
-                      <option value="Ele">Ele</option>
-                      <option value="Dela">Dela</option>
+                      <option value={COUPLE_NAMES.HE}>{COUPLE_NAMES.HE}</option>
+                      <option value={COUPLE_NAMES.SHE}>{COUPLE_NAMES.SHE}</option>
                     </select>
                   </div>
                 </div>
@@ -1521,6 +1532,19 @@ export default function Home() {
                       className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-100"
                     />
                   </div>
+                </div>
+
+                <div>
+                  <label className="text-[10px] text-slate-400 block mb-1">Responsável / Dono do Ativo</label>
+                  <select
+                    value={paidBy}
+                    onChange={(e) => setPaidBy(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-100"
+                  >
+                    <option value="Conjunto">Conjunto</option>
+                    <option value={COUPLE_NAMES.HE}>{COUPLE_NAMES.HE}</option>
+                    <option value={COUPLE_NAMES.SHE}>{COUPLE_NAMES.SHE}</option>
+                  </select>
                 </div>
               </>
             )}
