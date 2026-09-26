@@ -607,7 +607,6 @@ export default function Home() {
         {/* --- ABA 1: DASHBOARD --- */}
         {activeTab === 'dash' && (
           <>
-            {/* Card Patrimônio Líquido com nota explicativa de Posição Atual */}
             <div className="bg-gradient-to-br from-slate-900 via-slate-900 to-emerald-950/30 border border-slate-800 p-5 rounded-2xl shadow-xl relative overflow-hidden space-y-1">
               <div className="flex justify-between items-center">
                 <span className="text-[11px] text-slate-400 uppercase tracking-wider font-bold">Patrimônio Líquido do Casal</span>
