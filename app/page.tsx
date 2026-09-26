@@ -19,7 +19,11 @@ import {
   Target,
   PiggyBank,
   RefreshCw,
-  Scale
+  Scale,
+  Plus,
+  ChevronDown,
+  ChevronUp,
+  Info
 } from 'lucide-react';
 import { 
   PieChart, 
@@ -101,6 +105,9 @@ export default function Home() {
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [isMounted, setIsMounted] = useState(false);
   const [isUpdatingQuotes, setIsUpdatingQuotes] = useState(false);
+  
+  // Estado para controlar qual ativo está expandido (Acordeão)
+  const [expandedAssetId, setExpandedAssetId] = useState<string | null>(null);
 
   // Estados dos Filtros
   const currentDate = new Date();
@@ -304,7 +311,6 @@ export default function Home() {
           year: selectedYear
         };
 
-        // Verificar se já existe orçamento para a categoria no mês
         const existing = budgets.find(b => b.category === budgetCategory);
         if (existing) {
           const { error } = await supabase.from('budgets').update({ expected_amount: parseFloat(budgetAmount) }).eq('id', existing.id);
@@ -428,7 +434,6 @@ export default function Home() {
   const totalExpense = transactions.filter(t => t.type === 'expense').reduce((acc, t) => acc + Number(t.amount), 0);
   const monthlyBalance = totalIncome - totalExpense;
 
-  // Cálculos de Investimentos
   const totalInvested = investments.reduce((acc, inv) => acc + (Number(inv.quantity) * Number(inv.average_price)), 0);
   const totalCurrentInvested = investments.reduce((acc, inv) => {
     const price = (inv.current_price && inv.current_price > 0) ? inv.current_price : inv.average_price;
@@ -505,23 +510,13 @@ export default function Home() {
       <header className="w-full max-w-md bg-slate-900/90 backdrop-blur-md border-b border-slate-800 p-4 sticky top-0 z-10 flex justify-between items-center">
         <div>
           <h1 className="text-xl font-black bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-400 bg-clip-text text-transparent">
-            FINANÇAS EM CASAL
+            FINANÇAS CASAL PRO
           </h1>
           <p className="text-[10px] text-slate-400 uppercase tracking-widest font-semibold">Gestão & Patrimônio Consolidado</p>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={updateStockQuotes}
-            disabled={isUpdatingQuotes}
-            className="p-1.5 bg-slate-800 hover:bg-slate-700 text-cyan-400 rounded-lg border border-slate-700 transition flex items-center gap-1"
-            title="Atualizar Cotações B3"
-          >
-            <RefreshCw size={14} className={isUpdatingQuotes ? 'animate-spin' : ''} />
-          </button>
-          <div className="flex items-center gap-1">
-            <span className="w-7 h-7 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-xs border border-emerald-500/30">E</span>
-            <span className="w-7 h-7 rounded-full bg-teal-500/20 text-teal-400 flex items-center justify-center font-bold text-xs border border-teal-500/30">D</span>
-          </div>
+        <div className="flex items-center gap-1">
+          <span className="w-7 h-7 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-xs border border-emerald-500/30">E</span>
+          <span className="w-7 h-7 rounded-full bg-teal-500/20 text-teal-400 flex items-center justify-center font-bold text-xs border border-teal-500/30">D</span>
         </div>
       </header>
 
@@ -533,7 +528,7 @@ export default function Home() {
           <div className="bg-slate-900 border border-slate-800 p-3 rounded-2xl space-y-2.5">
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-bold text-slate-400 uppercase flex items-center gap-1.5">
-                <Filter size={13} className="text-emerald-400" /> Filtro de Período
+                <Filter size={13} className="text-emerald-400" /> Filtro de Período (Fluxo de Caixa)
               </span>
               <div className="flex gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800 text-[10px]">
                 <button
@@ -612,15 +607,20 @@ export default function Home() {
         {/* --- ABA 1: DASHBOARD --- */}
         {activeTab === 'dash' && (
           <>
-            {/* Card Patrimônio Líquido */}
-            <div className="bg-gradient-to-br from-slate-900 via-slate-900 to-emerald-950/30 border border-slate-800 p-5 rounded-2xl shadow-xl relative overflow-hidden">
-              <span className="text-[11px] text-slate-400 uppercase tracking-wider font-bold">Patrimônio Líquido do Casal</span>
-              <p className="text-3xl font-black text-slate-100 mt-1">
+            {/* Card Patrimônio Líquido com nota explicativa de Posição Atual */}
+            <div className="bg-gradient-to-br from-slate-900 via-slate-900 to-emerald-950/30 border border-slate-800 p-5 rounded-2xl shadow-xl relative overflow-hidden space-y-1">
+              <div className="flex justify-between items-center">
+                <span className="text-[11px] text-slate-400 uppercase tracking-wider font-bold">Patrimônio Líquido do Casal</span>
+                <span className="text-[9px] text-emerald-400/90 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full flex items-center gap-1">
+                  <Info size={10} /> Posição Atual de Mercado
+                </span>
+              </div>
+              <p className="text-3xl font-black text-slate-100">
                 R$ {netWorth.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
               </p>
               <div className="mt-4 pt-3 border-t border-slate-800/80 grid grid-cols-2 gap-2 text-xs">
                 <div>
-                  <span className="text-slate-400 block text-[10px]">Saldo do Período</span>
+                  <span className="text-slate-400 block text-[10px]">Saldo do Período (Filtrado)</span>
                   <span className={`font-bold ${monthlyBalance >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                     R$ {monthlyBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                   </span>
@@ -634,11 +634,10 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Resumo do Período */}
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-xl">
                 <p className="text-xs text-emerald-400 flex items-center gap-1 font-semibold">
-                  <ArrowUpRight size={14} /> Receitas
+                  <ArrowUpRight size={14} /> Receitas (Período)
                 </p>
                 <p className="text-base font-bold text-slate-100 mt-1">
                   R$ {totalIncome.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
@@ -647,7 +646,7 @@ export default function Home() {
 
               <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-xl">
                 <p className="text-xs text-rose-400 flex items-center gap-1 font-semibold">
-                  <ArrowDownRight size={14} /> Despesas
+                  <ArrowDownRight size={14} /> Despesas (Período)
                 </p>
                 <p className="text-base font-bold text-slate-100 mt-1">
                   R$ {totalExpense.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
@@ -655,11 +654,10 @@ export default function Home() {
               </div>
             </div>
 
-            {/* GRÁFICO 1: COMPARATIVO RECEITAS VS DESPESAS */}
             {isMounted && (totalIncome > 0 || totalExpense > 0) && (
               <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl space-y-3">
                 <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                  <BarChart3 size={14} className="text-emerald-400" /> Receitas vs Despesas
+                  <BarChart3 size={14} className="text-emerald-400" /> Receitas vs Despesas (Período)
                 </h3>
                 <div className="h-44 w-full">
                   <ResponsiveContainer width="100%" height="100%">
@@ -680,11 +678,10 @@ export default function Home() {
               </div>
             )}
 
-            {/* GRÁFICO 2: DESPESAS POR CATEGORIA */}
             {isMounted && categoryChartData.length > 0 && (
               <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl space-y-3">
                 <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                  <PieIcon size={14} className="text-emerald-400" /> Gastos por Categoria
+                  <PieIcon size={14} className="text-emerald-400" /> Gastos por Categoria (Período)
                 </h3>
                 <div className="h-48 w-full flex items-center justify-center">
                   <ResponsiveContainer width="100%" height="100%">
@@ -721,7 +718,6 @@ export default function Home() {
               </div>
             )}
 
-            {/* EXTRATO COM EDIÇÃO E EXCLUSÃO */}
             <div className="space-y-3">
               <div className="flex justify-between items-center">
                 <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Lançamentos do Período</h3>
@@ -778,7 +774,6 @@ export default function Home() {
               </button>
             </div>
 
-            {/* GRÁFICO 4: COMPARATIVO PREVISTO VS REALIZADO */}
             {isMounted && budgetChartData.length > 0 && (
               <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl space-y-3">
                 <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Previsto vs Realizado</h3>
@@ -796,7 +791,6 @@ export default function Home() {
               </div>
             )}
 
-            {/* LISTA DE LIMITES POR CATEGORIA */}
             <div className="space-y-2">
               {budgets.length === 0 ? (
                 <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl text-center space-y-2">
@@ -923,7 +917,7 @@ export default function Home() {
           <div className="space-y-4">
             <div className="flex justify-between items-center">
               <h2 className="text-base font-bold text-slate-200">Carteira de Ativos</h2>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
                 <button
                   onClick={updateStockQuotes}
                   disabled={isUpdatingQuotes}
@@ -931,6 +925,12 @@ export default function Home() {
                 >
                   <RefreshCw size={11} className={isUpdatingQuotes ? 'animate-spin' : ''} />
                   {isUpdatingQuotes ? 'Buscando...' : 'Cotações B3'}
+                </button>
+                <button
+                  onClick={() => { setEntryType('investment'); setActiveTab('add'); }}
+                  className="text-[10px] font-bold text-emerald-400 border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 rounded-lg flex items-center gap-1"
+                >
+                  <Plus size={11} /> Novo Ativo
                 </button>
               </div>
             </div>
@@ -985,56 +985,88 @@ export default function Home() {
                 </button>
               </div>
             ) : (
-              investments.map((inv) => {
-                const totalCost = Number(inv.quantity) * Number(inv.average_price);
-                const currentPrice = (inv.current_price && inv.current_price > 0) ? inv.current_price : inv.average_price;
-                const totalCurrent = Number(inv.quantity) * Number(currentPrice);
-                const profitLoss = totalCurrent - totalCost;
-                const profitLossPct = totalCost > 0 ? (profitLoss / totalCost) * 100 : 0;
+              <div className="space-y-2">
+                {investments.map((inv) => {
+                  const totalCost = Number(inv.quantity) * Number(inv.average_price);
+                  const currentPrice = (inv.current_price && inv.current_price > 0) ? inv.current_price : inv.average_price;
+                  const totalCurrent = Number(inv.quantity) * Number(currentPrice);
+                  const profitLoss = totalCurrent - totalCost;
+                  const profitLossPct = totalCost > 0 ? (profitLoss / totalCost) * 100 : 0;
+                  const isBelowCeiling = (inv.ceiling_price ?? 0) > 0 && currentPrice <= (inv.ceiling_price ?? 0);
 
-                const isBelowCeiling = (inv.ceiling_price ?? 0) > 0 && currentPrice <= (inv.ceiling_price ?? 0);
+                  const isExpanded = expandedAssetId === inv.id;
 
-                return (
-                  <div key={inv.id} className="bg-slate-900 border border-slate-800 p-4 rounded-xl space-y-2">
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <span className="text-xs font-black text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-                          {inv.ticker}
-                        </span>
-                        <span className="text-[10px] text-slate-400 ml-2">{inv.asset_class}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="text-right">
-                          <p className="text-xs font-bold text-slate-100">R$ {totalCurrent.toFixed(2)}</p>
-                          <p className={`text-[9px] font-bold ${profitLoss >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                            {profitLoss >= 0 ? '+' : ''}{profitLoss.toFixed(2)} ({profitLossPct.toFixed(1)}%)
-                          </p>
+                  return (
+                    <div key={inv.id} className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden transition-all duration-200">
+                      <div 
+                        onClick={() => setExpandedAssetId(isExpanded ? null : inv.id)}
+                        className="p-4 flex justify-between items-center cursor-pointer hover:bg-slate-800/70 select-none"
+                      >
+                        <div>
+                          <span className="text-xs font-black text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                            {inv.ticker}
+                          </span>
+                          <span className="text-[10px] text-slate-400 ml-2">{inv.asset_class}</span>
                         </div>
-                        <button onClick={() => handleEditInvestment(inv)} className="p-1 text-slate-500 hover:text-amber-400" title="Editar"><Edit2 size={13} /></button>
-                        <button onClick={() => handleDeleteInvestment(inv.id)} className="p-1 text-slate-500 hover:text-rose-400" title="Excluir"><Trash2 size={13} /></button>
+                        
+                        <div className="flex items-center gap-3">
+                          <div className="text-right">
+                            <p className="text-xs font-bold text-slate-100">R$ {totalCurrent.toFixed(2)}</p>
+                            <p className={`text-[9px] font-bold ${profitLoss >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                              {profitLoss >= 0 ? '+' : ''}{profitLoss.toFixed(2)} ({profitLossPct.toFixed(1)}%)
+                            </p>
+                          </div>
+                          <div className="text-slate-500">
+                            {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                          </div>
+                        </div>
                       </div>
-                    </div>
 
-                    <div className="grid grid-cols-4 gap-1 text-[10px] text-slate-400 pt-2 border-t border-slate-800/60">
-                      <div>
-                        <span>Qtd:</span> <strong className="text-slate-200 block">{inv.quantity}</strong>
-                      </div>
-                      <div>
-                        <span>PM:</span> <strong className="text-slate-200 block">R$ {Number(inv.average_price).toFixed(2)}</strong>
-                      </div>
-                      <div>
-                        <span>Atual:</span> <strong className="text-cyan-400 block">R$ {Number(currentPrice).toFixed(2)}</strong>
-                      </div>
-                      <div>
-                        <span>Teto:</span> 
-                        <strong className={`block ${isBelowCeiling ? 'text-emerald-400 font-bold' : 'text-slate-200'}`}>
-                          {(inv.ceiling_price ?? 0) > 0 ? `R$ ${Number(inv.ceiling_price).toFixed(2)}` : 'N/A'}
-                        </strong>
-                      </div>
+                      {isExpanded && (
+                        <div className="px-4 pb-4 pt-3 border-t border-slate-800/60 bg-slate-950/30">
+                          <div className="flex justify-between items-center mb-3">
+                            <span className="text-[10px] text-slate-500 font-medium uppercase tracking-wider">Detalhes do Ativo</span>
+                            <div className="flex items-center gap-2">
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); handleEditInvestment(inv); }} 
+                                className="p-1.5 bg-slate-800 text-slate-400 hover:text-amber-400 rounded-md transition" 
+                                title="Editar"
+                              >
+                                <Edit2 size={13} />
+                              </button>
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); handleDeleteInvestment(inv.id); }} 
+                                className="p-1.5 bg-slate-800 text-slate-400 hover:text-rose-400 rounded-md transition" 
+                                title="Excluir"
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            </div>
+                          </div>
+                          
+                          <div className="grid grid-cols-4 gap-1 text-[10px] text-slate-400">
+                            <div>
+                              <span>Qtd:</span> <strong className="text-slate-200 block text-xs mt-0.5">{inv.quantity}</strong>
+                            </div>
+                            <div>
+                              <span>PM:</span> <strong className="text-slate-200 block text-xs mt-0.5">R$ {Number(inv.average_price).toFixed(2)}</strong>
+                            </div>
+                            <div>
+                              <span>Atual:</span> <strong className="text-cyan-400 block text-xs mt-0.5">R$ {Number(currentPrice).toFixed(2)}</strong>
+                            </div>
+                            <div>
+                              <span>Teto:</span> 
+                              <strong className={`block text-xs mt-0.5 ${isBelowCeiling ? 'text-emerald-400 font-bold' : 'text-slate-200'}`}>
+                                {(inv.ceiling_price ?? 0) > 0 ? `R$ ${Number(inv.ceiling_price).toFixed(2)}` : 'N/A'}
+                              </strong>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  </div>
-                );
-              })
+                  );
+                })}
+              </div>
             )}
           </div>
         )}
