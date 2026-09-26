@@ -113,6 +113,9 @@ export default function Home() {
   // Estado para controlar qual ativo está expandido (Acordeão)
   const [expandedAssetId, setExpandedAssetId] = useState<string | null>(null);
 
+  // Estado para controlar o Modal de Detalhes (Fixo vs Variável)
+  const [modalNature, setModalNature] = useState<'fixo' | 'variavel' | null>(null);
+
   // Estados dos Filtros
   const currentDate = new Date();
   const [filterType, setFilterType] = useState<'month_year' | 'range' | 'all'>('month_year');
@@ -469,8 +472,11 @@ export default function Home() {
   const monthlyBalance = totalIncome - totalExpense;
 
   // Cálculos de Fixos vs Variáveis
-  const totalFixedExpense = transactions.filter(t => t.type === 'expense' && t.nature === 'fixo').reduce((acc, t) => acc + Number(t.amount), 0);
-  const totalVariableExpense = transactions.filter(t => t.type === 'expense' && (t.nature === 'variavel' || !t.nature)).reduce((acc, t) => acc + Number(t.amount), 0);
+  const fixedTransactionsList = transactions.filter(t => t.type === 'expense' && t.nature === 'fixo');
+  const variableTransactionsList = transactions.filter(t => t.type === 'expense' && (t.nature === 'variavel' || !t.nature));
+
+  const totalFixedExpense = fixedTransactionsList.reduce((acc, t) => acc + Number(t.amount), 0);
+  const totalVariableExpense = variableTransactionsList.reduce((acc, t) => acc + Number(t.amount), 0);
 
   const totalInvested = investments.reduce((acc, inv) => acc + (Number(inv.quantity) * Number(inv.average_price)), 0);
   const totalCurrentInvested = investments.reduce((acc, inv) => {
@@ -543,7 +549,7 @@ export default function Home() {
   ];
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center pb-24">
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center pb-24 relative">
       {/* Topbar Fixo */}
       <header className="w-full max-w-md bg-slate-900/90 backdrop-blur-md border-b border-slate-800 p-4 sticky top-0 z-10 flex justify-between items-center">
         <div>
@@ -691,22 +697,35 @@ export default function Home() {
               </div>
             </div>
 
-            {/* CARD DE RAIO-X: FIXOS VS VARIÁVEIS */}
+            {/* CARD DE RAIO-X: FIXOS VS VARIÁVEIS (AGORA CLICÁVEIS) */}
             <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl space-y-3">
-              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                <Tag size={14} className="text-emerald-400" /> Raio-X de Despesas (Fixas vs Variáveis)
-              </h3>
+              <div className="flex justify-between items-center">
+                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                  <Tag size={14} className="text-emerald-400" /> Raio-X de Despesas (Toque para ver)
+                </h3>
+              </div>
               <div className="grid grid-cols-2 gap-3 text-xs">
-                <div className="bg-amber-500/10 border border-amber-500/20 p-3 rounded-xl">
+                {/* Botão Cartão Fixo */}
+                <button
+                  type="button"
+                  onClick={() => setModalNature('fixo')}
+                  className="bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 p-3 rounded-xl text-left transition active:scale-95 cursor-pointer"
+                >
                   <span className="text-amber-400 font-semibold block text-[10px]">📌 Gastos Fixos</span>
                   <p className="text-sm font-bold text-slate-100 mt-1">R$ {totalFixedExpense.toFixed(2)}</p>
                   <span className="text-[9px] text-slate-400">{totalExpense > 0 ? ((totalFixedExpense / totalExpense) * 100).toFixed(0) : 0}% do total</span>
-                </div>
-                <div className="bg-cyan-500/10 border border-cyan-500/20 p-3 rounded-xl">
+                </button>
+
+                {/* Botão Cartão Variável */}
+                <button
+                  type="button"
+                  onClick={() => setModalNature('variavel')}
+                  className="bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/20 p-3 rounded-xl text-left transition active:scale-95 cursor-pointer"
+                >
                   <span className="text-cyan-400 font-semibold block text-[10px]">🛒 Gastos Variáveis</span>
                   <p className="text-sm font-bold text-slate-100 mt-1">R$ {totalVariableExpense.toFixed(2)}</p>
                   <span className="text-[9px] text-slate-400">{totalExpense > 0 ? ((totalVariableExpense / totalExpense) * 100).toFixed(0) : 0}% do total</span>
-                </div>
+                </button>
               </div>
             </div>
 
@@ -1609,6 +1628,57 @@ export default function Home() {
           </form>
         )}
       </main>
+
+      {/* --- MODAL FLUTUANTE DE DETALHES (FIXOS / VARIÁVEIS) --- */}
+      {modalNature && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 w-full max-w-sm rounded-2xl p-5 space-y-4 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <span className={`w-3 h-3 rounded-full ${modalNature === 'fixo' ? 'bg-amber-400' : 'bg-cyan-400'}`}></span>
+                <h3 className="text-sm font-bold text-slate-100 uppercase tracking-wider">
+                  {modalNature === 'fixo' ? 'Detalhes: Gastos Fixos' : 'Detalhes: Gastos Variáveis'}
+                </h3>
+              </div>
+              <button 
+                onClick={() => setModalNature(null)} 
+                className="text-slate-400 hover:text-slate-100 p-1 rounded-lg bg-slate-800/50"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="max-h-64 overflow-y-auto space-y-2 pr-1">
+              {(modalNature === 'fixo' ? fixedTransactionsList : variableTransactionsList).length === 0 ? (
+                <div className="text-center py-6 text-slate-500 text-xs">
+                  Nenhum gasto registrado nesta categoria para este período.
+                </div>
+              ) : (
+                (modalNature === 'fixo' ? fixedTransactionsList : variableTransactionsList).map((t) => (
+                  <div key={t.id} className="bg-slate-950 border border-slate-800/80 p-3 rounded-xl flex justify-between items-center text-xs">
+                    <div>
+                      <p className="font-semibold text-slate-200">{t.description}</p>
+                      <p className="text-[10px] text-slate-500 mt-0.5">
+                        {new Date(t.date).toLocaleDateString('pt-BR')} • {t.category} • {t.paid_by}
+                      </p>
+                    </div>
+                    <p className="font-bold text-rose-400">
+                      R$ {Number(t.amount).toFixed(2)}
+                    </p>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="pt-2 border-t border-slate-800 flex justify-between items-center text-xs font-bold">
+              <span className="text-slate-400">Total Categoria:</span>
+              <span className={modalNature === 'fixo' ? 'text-amber-400' : 'text-cyan-400'}>
+                R$ {(modalNature === 'fixo' ? totalFixedExpense : totalVariableExpense).toFixed(2)}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Navigation Bar Fixo */}
       <nav className="fixed bottom-0 w-full max-w-md bg-slate-900/90 backdrop-blur-lg border-t border-slate-800 flex justify-around p-2.5 z-20">
