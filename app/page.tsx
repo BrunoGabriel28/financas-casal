@@ -665,7 +665,7 @@ export default function Home() {
                       <YAxis stroke="#94a3b8" fontSize={10} tickLine={false} axisLine={false} />
                       <Tooltip 
                         contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px', fontSize: '12px' }} 
-                        formatter={(value: number | string | Array<number | string> | undefined) => [`R$ ${Number(value ?? 0).toFixed(2)}`, 'Valor']}
+                        formatter={((value: any) => [`R$ ${Number(value ?? 0).toFixed(2)}`, 'Valor']) as any}
                       />
                       <Bar dataKey="valor" radius={[6, 6, 0, 0]}>
                         <Cell fill="#10b981" />
@@ -700,7 +700,7 @@ export default function Home() {
                       </Pie>
                       <Tooltip 
                         contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px', fontSize: '12px' }}
-                        formatter={(value: number | string | Array<number | string> | undefined) => [`R$ ${Number(value ?? 0).toFixed(2)}`, 'Gasto']}
+                        formatter={((value: any) => [`R$ ${Number(value ?? 0).toFixed(2)}`, 'Gasto']) as any}
                       />
                     </PieChart>
                   </ResponsiveContainer>
@@ -958,7 +958,7 @@ export default function Home() {
                       </Pie>
                       <Tooltip 
                         contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px', fontSize: '12px' }}
-                        formatter={(value: number | string | Array<number | string> | undefined) => [`R$ ${Number(value ?? 0).toFixed(2)}`, 'Total']}
+                        formatter={((value: any) => [`R$ ${Number(value ?? 0).toFixed(2)}`, 'Total']) as any}
                       />
                     </PieChart>
                   </ResponsiveContainer>
