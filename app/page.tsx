@@ -116,9 +116,9 @@ export default function Home() {
   // Estado para controlar o Modal de Detalhes (Fixo vs Variável)
   const [modalNature, setModalNature] = useState<'fixo' | 'variavel' | null>(null);
 
-  // Estados dos Filtros
+  // Estados dos Filtros (adicionado 'year')
   const currentDate = new Date();
-  const [filterType, setFilterType] = useState<'month_year' | 'range' | 'all'>('month_year');
+  const [filterType, setFilterType] = useState<'month_year' | 'year' | 'range' | 'all'>('month_year');
   const [selectedMonth, setSelectedMonth] = useState<number>(currentDate.getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState<number>(currentDate.getFullYear());
   const [startDate, setStartDate] = useState<string>(`${currentDate.getFullYear()}-01-01`);
@@ -177,6 +177,11 @@ export default function Home() {
       const endOfMonth = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}T23:59:59.999Z`;
 
       transQuery = transQuery.gte('date', startOfMonth).lte('date', endOfMonth);
+    } else if (filterType === 'year') {
+      const startOfYear = `${selectedYear}-01-01T00:00:00.000Z`;
+      const endOfYear = `${selectedYear}-12-31T23:59:59.999Z`;
+
+      transQuery = transQuery.gte('date', startOfYear).lte('date', endOfYear);
     } else if (filterType === 'range') {
       if (startDate && endDate) {
         transQuery = transQuery.gte('date', `${startDate}T00:00:00.000Z`).lte('date', `${endDate}T23:59:59.999Z`);
@@ -567,20 +572,27 @@ export default function Home() {
       {/* Conteúdo Principal */}
       <main className="w-full max-w-md p-4 space-y-5">
 
-        {/* BARRA DE FILTROS DE DATA */}
+        {/* BARRA DE FILTROS DE DATA ATUALIZADA */}
         {(activeTab === 'dash' || activeTab === 'finances' || activeTab === 'budgets') && (
           <div className="bg-slate-900 border border-slate-800 p-3 rounded-2xl space-y-2.5">
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-bold text-slate-400 uppercase flex items-center gap-1.5">
                 <Filter size={13} className="text-emerald-400" /> Filtro de Período (Fluxo de Caixa)
               </span>
-              <div className="flex gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800 text-[10px]">
+              <div className="flex gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800 text-[9px]">
                 <button
                   type="button"
                   onClick={() => setFilterType('month_year')}
                   className={`px-2 py-0.5 rounded font-semibold ${filterType === 'month_year' ? 'bg-emerald-500 text-slate-950' : 'text-slate-400'}`}
                 >
                   Mês/Ano
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterType('year')}
+                  className={`px-2 py-0.5 rounded font-semibold ${filterType === 'year' ? 'bg-emerald-500 text-slate-950' : 'text-slate-400'}`}
+                >
+                  Ano
                 </button>
                 <button
                   type="button"
@@ -619,6 +631,21 @@ export default function Home() {
                   <option value={2025}>2025</option>
                   <option value={2026}>2026</option>
                   <option value={2027}>2027</option>
+                </select>
+              </div>
+            )}
+
+            {filterType === 'year' && (
+              <div className="pt-1">
+                <label className="text-[9px] text-slate-400 block mb-0.5">Selecione o Ano:</label>
+                <select
+                  value={selectedYear}
+                  onChange={(e) => setSelectedYear(Number(e.target.value))}
+                  className="w-full bg-slate-950 border border-slate-800 text-slate-200 text-xs rounded-xl p-2 focus:outline-none focus:border-emerald-500"
+                >
+                  <option value={2025}>2025 (Ano Completo)</option>
+                  <option value={2026}>2026 (Ano Completo)</option>
+                  <option value={2027}>2027 (Ano Completo)</option>
                 </select>
               </div>
             )}
@@ -697,7 +724,7 @@ export default function Home() {
               </div>
             </div>
 
-            {/* CARD DE RAIO-X: FIXOS VS VARIÁVEIS (AGORA CLICÁVEIS) */}
+            {/* CARD DE RAIO-X: FIXOS VS VARIÁVEIS */}
             <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl space-y-3">
               <div className="flex justify-between items-center">
                 <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
@@ -705,7 +732,6 @@ export default function Home() {
                 </h3>
               </div>
               <div className="grid grid-cols-2 gap-3 text-xs">
-                {/* Botão Cartão Fixo */}
                 <button
                   type="button"
                   onClick={() => setModalNature('fixo')}
@@ -716,7 +742,6 @@ export default function Home() {
                   <span className="text-[9px] text-slate-400">{totalExpense > 0 ? ((totalFixedExpense / totalExpense) * 100).toFixed(0) : 0}% do total</span>
                 </button>
 
-                {/* Botão Cartão Variável */}
                 <button
                   type="button"
                   onClick={() => setModalNature('variavel')}
