@@ -23,7 +23,9 @@ import {
   Plus,
   ChevronDown,
   ChevronUp,
-  Info
+  Info,
+  Tag,
+  Repeat
 } from 'lucide-react';
 import { 
   PieChart, 
@@ -46,6 +48,8 @@ interface Transaction {
   category: string;
   paid_by: string;
   date: string;
+  nature?: 'fixo' | 'variavel';
+  is_recurring?: boolean;
 }
 
 interface InvestmentAsset {
@@ -128,6 +132,11 @@ export default function Home() {
   const [category, setCategory] = useState('Mercado');
   const [paidBy, setPaidBy] = useState('Conjunto');
   const [entryDate, setEntryDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [expenseNature, setExpenseNature] = useState<'fixo' | 'variavel'>('variavel');
+  
+  // Estados para Recorrência (Gastos Fixos Repetidos)
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [recurrenceMonths, setRecurrenceMonths] = useState('12');
 
   // Investimentos Form
   const [ticker, setTicker] = useState('');
@@ -229,26 +238,46 @@ export default function Home() {
     }
   }
 
-  // Salvar / Atualizar Lançamento Unificado
+  // Salvar / Atualizar Lançamento Unificado com Suporte a Recorrência
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
     try {
       if (entryType === 'transaction') {
-        const payload = {
-          description,
-          amount: parseFloat(amount),
-          type: transType,
-          category,
-          paid_by: paidBy,
-          date: new Date(entryDate).toISOString()
-        };
+        const totalMonths = (isRecurring && transType === 'expense' && !editingId) ? parseInt(recurrenceMonths) || 1 : 1;
+        const baseDate = new Date(entryDate);
+        const transactionsToInsert = [];
+
+        for (let i = 0; i < totalMonths; i++) {
+          const targetDate = new Date(baseDate);
+          targetDate.setMonth(baseDate.getMonth() + i);
+
+          const year = targetDate.getFullYear();
+          const month = String(targetDate.getMonth() + 1).padStart(2, '0');
+          const day = String(targetDate.getDate()).padStart(2, '0');
+          const formattedDate = `${year}-${month}-${day}T00:00:00.000Z`;
+
+          const customDescription = totalMonths > 1 
+            ? `${description} (${i + 1}/${totalMonths})` 
+            : description;
+
+          transactionsToInsert.push({
+            description: customDescription,
+            amount: parseFloat(amount),
+            type: transType,
+            category,
+            paid_by: paidBy,
+            date: formattedDate,
+            nature: transType === 'expense' ? expenseNature : null,
+            is_recurring: totalMonths > 1
+          });
+        }
 
         if (editingId) {
-          const { error } = await supabase.from('transactions').update(payload).eq('id', editingId);
+          const { error } = await supabase.from('transactions').update(transactionsToInsert[0]).eq('id', editingId);
           if (error) throw error;
         } else {
-          const { error } = await supabase.from('transactions').insert([payload]);
+          const { error } = await supabase.from('transactions').insert(transactionsToInsert);
           if (error) throw error;
         }
 
@@ -342,6 +371,8 @@ export default function Home() {
     setTransType(t.type);
     setCategory(t.category);
     setPaidBy(t.paid_by);
+    setExpenseNature(t.nature || 'variavel');
+    setIsRecurring(false);
     setEntryDate(t.date ? new Date(t.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
     setActiveTab('add');
   }
@@ -426,6 +457,9 @@ export default function Home() {
     setGoalCurrent('');
     setGoalDeadline('');
     setBudgetAmount('');
+    setExpenseNature('variavel');
+    setIsRecurring(false);
+    setRecurrenceMonths('12');
     setEntryDate(new Date().toISOString().split('T')[0]);
   }
 
@@ -433,6 +467,10 @@ export default function Home() {
   const totalIncome = transactions.filter(t => t.type === 'income').reduce((acc, t) => acc + Number(t.amount), 0);
   const totalExpense = transactions.filter(t => t.type === 'expense').reduce((acc, t) => acc + Number(t.amount), 0);
   const monthlyBalance = totalIncome - totalExpense;
+
+  // Cálculos de Fixos vs Variáveis
+  const totalFixedExpense = transactions.filter(t => t.type === 'expense' && t.nature === 'fixo').reduce((acc, t) => acc + Number(t.amount), 0);
+  const totalVariableExpense = transactions.filter(t => t.type === 'expense' && (t.nature === 'variavel' || !t.nature)).reduce((acc, t) => acc + Number(t.amount), 0);
 
   const totalInvested = investments.reduce((acc, inv) => acc + (Number(inv.quantity) * Number(inv.average_price)), 0);
   const totalCurrentInvested = investments.reduce((acc, inv) => {
@@ -653,6 +691,25 @@ export default function Home() {
               </div>
             </div>
 
+            {/* CARD DE RAIO-X: FIXOS VS VARIÁVEIS */}
+            <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl space-y-3">
+              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                <Tag size={14} className="text-emerald-400" /> Raio-X de Despesas (Fixas vs Variáveis)
+              </h3>
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div className="bg-amber-500/10 border border-amber-500/20 p-3 rounded-xl">
+                  <span className="text-amber-400 font-semibold block text-[10px]">📌 Gastos Fixos</span>
+                  <p className="text-sm font-bold text-slate-100 mt-1">R$ {totalFixedExpense.toFixed(2)}</p>
+                  <span className="text-[9px] text-slate-400">{totalExpense > 0 ? ((totalFixedExpense / totalExpense) * 100).toFixed(0) : 0}% do total</span>
+                </div>
+                <div className="bg-cyan-500/10 border border-cyan-500/20 p-3 rounded-xl">
+                  <span className="text-cyan-400 font-semibold block text-[10px]">🛒 Gastos Variáveis</span>
+                  <p className="text-sm font-bold text-slate-100 mt-1">R$ {totalVariableExpense.toFixed(2)}</p>
+                  <span className="text-[9px] text-slate-400">{totalExpense > 0 ? ((totalVariableExpense / totalExpense) * 100).toFixed(0) : 0}% do total</span>
+                </div>
+              </div>
+            </div>
+
             {isMounted && (totalIncome > 0 || totalExpense > 0) && (
               <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl space-y-3">
                 <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
@@ -731,7 +788,14 @@ export default function Home() {
                 transactions.map((t) => (
                   <div key={t.id} className="bg-slate-900 border border-slate-800 p-3 rounded-xl flex justify-between items-center text-xs">
                     <div>
-                      <p className="font-semibold text-slate-200">{t.description}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="font-semibold text-slate-200">{t.description}</p>
+                        {t.type === 'expense' && (
+                          <span className={`text-[9px] px-1.5 py-0.2 rounded font-bold ${t.nature === 'fixo' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' : 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20'}`}>
+                            {t.nature === 'fixo' ? 'Fixo' : 'Variável'}
+                          </span>
+                        )}
+                      </div>
                       <div className="flex gap-2 text-[10px] text-slate-500 mt-0.5">
                         <span>{new Date(t.date).toLocaleDateString('pt-BR')}</span>
                         <span>•</span>
@@ -1219,7 +1283,7 @@ export default function Home() {
                     type="text"
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
-                    placeholder="Ex: Mercado, Conta de Luz"
+                    placeholder="Ex: Aluguel, Mercado"
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-100"
                     required
                   />
@@ -1238,7 +1302,7 @@ export default function Home() {
                     />
                   </div>
                   <div>
-                    <label className="text-[10px] text-slate-400 block mb-1">Data</label>
+                    <label className="text-[10px] text-slate-400 block mb-1">Data de Início</label>
                     <input
                       type="date"
                       value={entryDate}
@@ -1285,6 +1349,65 @@ export default function Home() {
                     </select>
                   </div>
                 </div>
+
+                {/* Seletor de Fixo ou Variável quando for Despesa */}
+                {transType === 'expense' && (
+                  <div className="space-y-3 pt-1">
+                    <div>
+                      <label className="text-[10px] text-slate-400 block mb-1">Natureza do Gasto</label>
+                      <div className="flex gap-2 bg-slate-950 p-1 rounded-xl border border-slate-800">
+                        <button
+                          type="button"
+                          onClick={() => setExpenseNature('fixo')}
+                          className={`flex-1 py-2 rounded-lg text-xs font-bold transition ${expenseNature === 'fixo' ? 'bg-amber-500 text-slate-950' : 'text-slate-400'}`}
+                        >
+                          📌 Gasto Fixo
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setExpenseNature('variavel')}
+                          className={`flex-1 py-2 rounded-lg text-xs font-bold transition ${expenseNature === 'variavel' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}
+                        >
+                          🛒 Gasto Variável
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Opção de Recorrência Automática (Apenas para novos gastos fixos) */}
+                    {expenseNature === 'fixo' && !editingId && (
+                      <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                            <Repeat size={14} className="text-amber-400" /> Repetir automaticamente nos próximos meses?
+                          </label>
+                          <input
+                            type="checkbox"
+                            checked={isRecurring}
+                            onChange={(e) => setIsRecurring(e.target.checked)}
+                            className="w-4 h-4 accent-emerald-500 cursor-pointer"
+                          />
+                        </div>
+
+                        {isRecurring && (
+                          <div>
+                            <label className="text-[10px] text-slate-400 block mb-1">Quantos meses vai repetir?</label>
+                            <select
+                              value={recurrenceMonths}
+                              onChange={(e) => setRecurrenceMonths(e.target.value)}
+                              className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-100"
+                            >
+                              <option value="3">3 Meses</option>
+                              <option value="6">6 Meses</option>
+                              <option value="12">12 Meses (1 Ano)</option>
+                              <option value="24">24 Meses (2 Anos)</option>
+                              <option value="36">36 Meses (3 Anos)</option>
+                            </select>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
               </>
             )}
 
